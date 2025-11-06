@@ -74,12 +74,17 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input }) => {
+        console.log("[BACKEND] Iniciando mutation de importacao");
         const db = await getDb();
+        console.log("[BACKEND] Banco conectado");
         if (!db) throw new Error('Database not available');
+        
+        console.log("[BACKEND] Dados recebidos:", Object.keys(input));
 
-        let totalProcessado = 0;
-        let totalErros = 0;
-        const logId = logger.startProcessing(1, 'importacao_completa');
+        try {
+          let totalProcessado = 0;
+          let totalErros = 0;
+          const logId = logger.startProcessing(1, 'importacao_completa');
 
         // Processar clientes
         if (input.clientes) {
@@ -323,17 +328,22 @@ export const appRouter = router({
           }
         }
 
-        // Finalizar logging
-        logger.endProcessing(logId, true);
-        const processLog = logger.getProcessLog(logId);
+          // Finalizar logging
+          logger.endProcessing(logId, true);
+          const processLog = logger.getProcessLog(logId);
 
-        return { 
-          totalProcessado, 
-          totalErros,
-          totalInserido: totalProcessado,
-          sucesso: true,
-          log: processLog
-        };
+          console.log("[BACKEND] Finalizado com sucesso");
+          return { 
+            totalProcessado, 
+            totalErros,
+            totalInserido: totalProcessado,
+            sucesso: true,
+            log: processLog
+          };
+        } catch (e: any) {
+          console.error("[BACKEND] Erro capturado:", e);
+          throw new Error(e.message);
+        }
       }),
   }),
   upload: router({

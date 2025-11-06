@@ -65,8 +65,8 @@ export default function Upload() {
       return;
     }
 
+    setMessage("Lendo arquivos...");
     setProcessando(true);
-    setMessage(`Processando ${files.length} arquivo(s)...`);
 
     try {
       // Checkpoint 1: Início do processo
@@ -77,6 +77,7 @@ export default function Upload() {
       
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        setMessage(`Lendo arquivo ${i + 1}/${files.length}: ${file.name}`);
         console.log(`[UPLOAD] Lendo arquivo ${i + 1}/${files.length}:`, file.name);
         const content = await file.text();
         fileContents[file.name] = content;
@@ -90,6 +91,7 @@ export default function Upload() {
       console.log('[UPLOAD] Backup salvo no localStorage');
 
       // Checkpoint 3: Tentando enviar ao servidor
+      setMessage("Enviando ao servidor...");
       console.log('[UPLOAD] Enviando dados ao servidor...');
       
       // Mapear arquivos para formato esperado pelo endpoint

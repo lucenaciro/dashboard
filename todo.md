@@ -64,3 +64,9 @@
 - [x] Solução 6: Código EXATO - mutation.mutate com onSuccess/onError
 - [x] Solução 5: Adicionar opção "Tive erro no upload -> ir para copiar/colar"
 - [ ] Verificar que TODAS as 8 soluções estão EXATAMENTE como no documento
+
+## 🔧 Correções Executáveis (Solução PDF)
+- [x] 1. Timeout tRPC 5 minutos (main.tsx)
+- [x] 2. Logs detalhados backend (routers.ts)
+- [x] 3. Feedback visual frontend (Upload.tsx)
+- [x] 4. Limite JSON 50mb (server/index.ts) - JÁ ESTAVA
