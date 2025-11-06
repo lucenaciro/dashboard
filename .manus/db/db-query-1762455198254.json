@@ -1,0 +1,9 @@
+{
+  "query": "\nDELETE FROM movimentacoes;\nDELETE FROM estoque;\nDELETE FROM sellOut;\nDELETE FROM clientes;\nDELETE FROM vendedores;\nDELETE FROM produtos;\nDELETE FROM uploads;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user QYG13TLSFo5Ekya.918014ccc1bb --database FrE4fUPnqeti7iCmvyJ7mz --execute \nDELETE FROM movimentacoes;\nDELETE FROM estoque;\nDELETE FROM sellOut;\nDELETE FROM clientes;\nDELETE FROM vendedores;\nDELETE FROM produtos;\nDELETE FROM uploads;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1583
+}

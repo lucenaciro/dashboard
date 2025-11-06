@@ -85,3 +85,8 @@
 - [x] Criar tela de histórico de uploads (frontend)
 - [x] Adicionar feedback visual de progresso de upload
 - [ ] Implementar tratamento de erros e relatório de inconsistências (backend)
+
+## Correções Urgentes
+- [x] Limpar todas as tabelas do banco de dados (preparar para upload real)
+- [x] Corrigir formatação de valores monetários (dividir por 100)
+- [ ] Testar upload de arquivos reais
