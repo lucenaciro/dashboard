@@ -1,4 +1,5 @@
 import { COOKIE_NAME } from "@shared/const";
+import { sql } from "drizzle-orm";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
@@ -12,6 +13,34 @@ import { logger } from "./logger";
 import { processarArquivoInteligente } from "./polarsProcessor";
 
 export const appRouter = router({
+  periodo: router({
+    obter: publicProcedure.query(async () => {
+      const database = await getDb();
+      if (!database) return { inicio: null, fim: null, ano: new Date().getFullYear() };
+
+      try {
+        const result = await database
+          .select({
+            minData: sql<string>`MIN(data)`,
+            maxData: sql<string>`MAX(data)`,
+          })
+          .from(movimentacoes)
+          .limit(1);
+
+        if (result.length > 0 && result[0].minData && result[0].maxData) {
+          return {
+            inicio: result[0].minData,
+            fim: result[0].maxData,
+            ano: new Date(result[0].maxData).getFullYear(),
+          };
+        }
+      } catch (error) {
+        console.error('Erro ao buscar período:', error);
+      }
+
+      return { inicio: null, fim: null, ano: new Date().getFullYear() };
+    }),
+  }),
   dados: router({
     importar: publicProcedure
       .input(

@@ -31,3 +31,8 @@
 - [x] Corrigir incompatibilidade frontend/backend
 - [x] Corrigir integridade referencial e imports
 - [x] Testar TODAS as funcionalidades
+
+## 🔧 Correção de Período
+- [x] Adicionar endpoint para buscar período real dos dados
+- [x] Atualizar dashboard para exibir período correto
+- [x] Adicionar filtro de período funcional (exibindo período real dos dados)

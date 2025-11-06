@@ -17,6 +17,7 @@ import Executivo from "./dashboard/Executivo";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("visao-geral");
+  const { data: periodo } = trpc.periodo.obter.useQuery();
 
   return (
     <div className="min-h-screen bg-background">
@@ -37,7 +38,11 @@ export default function Home() {
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Período</p>
-                <p className="font-semibold">2024</p>
+                <p className="font-semibold">
+                  {periodo?.inicio && periodo?.fim
+                    ? `${new Date(periodo.inicio).toLocaleDateString('pt-BR')} - ${new Date(periodo.fim).toLocaleDateString('pt-BR')}`
+                    : periodo?.ano || new Date().getFullYear()}
+                </p>
               </div>
             </div>
           </div>
