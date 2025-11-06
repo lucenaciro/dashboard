@@ -70,3 +70,8 @@
 - [x] 2. Logs detalhados backend (routers.ts)
 - [x] 3. Feedback visual frontend (Upload.tsx)
 - [x] 4. Limite JSON 50mb (server/index.ts) - JÁ ESTAVA
+
+## 🐛 BUG CRÍTICO ENCONTRADO
+- [ ] Backend processa dados MAS NÃO retorna resposta
+- [ ] Adicionar return no final da mutation dados.importar
+- [ ] Testar que frontend recebe resposta e redireciona
