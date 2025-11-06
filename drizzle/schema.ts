@@ -133,6 +133,30 @@ export type Upload = typeof uploads.$inferSelect;
 export type InsertUpload = typeof uploads.$inferInsert;
 
 /**
+ * Tabela de ciclos de importação
+ * Permite múltiplos ciclos de análise com histórico comparável
+ */
+export const ciclos = mysqlTable("ciclos", {
+  id: int("id").autoincrement().primaryKey(),
+  nome: varchar("nome", { length: 255 }).notNull(),
+  descricao: text("descricao"),
+  dataInicio: timestamp("dataInicio").defaultNow().notNull(),
+  dataFim: timestamp("dataFim"),
+  status: mysqlEnum("status", ["ativo", "concluido", "arquivado"]).default("ativo").notNull(),
+  totalClientes: int("totalClientes").default(0),
+  totalVendedores: int("totalVendedores").default(0),
+  totalProdutos: int("totalProdutos").default(0),
+  totalMovimentacoes: int("totalMovimentacoes").default(0),
+  totalEstoque: int("totalEstoque").default(0),
+  usuarioId: int("usuarioId").references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Ciclo = typeof ciclos.$inferSelect;
+export type InsertCiclo = typeof ciclos.$inferInsert;
+
+/**
  * Tabela de sell-out (vendas dos revendedores)
  */
 export const sellOut = mysqlTable("sellOut", {
