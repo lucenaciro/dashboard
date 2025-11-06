@@ -45,6 +45,7 @@ export default function Upload() {
   // Solução 6: Código com mutation.mutate conforme documento
   const importMutation = trpc.dados.importar.useMutation({
     onSuccess: () => {
+      setProcessando(false);
       toast.success('Dados importados com sucesso!');
       setLocation('/');
     },
