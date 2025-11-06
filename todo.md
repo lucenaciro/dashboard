@@ -10,7 +10,7 @@
 - [x] Configurar tema e paleta de cores do dashboard
 - [x] Criar layout principal com sidebar de navegação
 - [x] Implementar sistema de abas (Visão Geral, Clientes, Vendedores, Produtos, Estoque, Positivação, Gráficos, Ações, Ranking, Executivo)
-- [ ] Criar componente de filtros globais
+- [x] Criar componente de filtros globais
 - [x] Implementar header com KPIs principais
 
 ## Fase 3: Painéis de Análise e Visualizações
@@ -44,10 +44,10 @@
 - [x] Análise de reativação de clientes inativos
 
 ## Fase 6: Sistema de Exportação de Relatórios
-- [ ] Implementar exportação de relatório por cliente (PDF)
-- [ ] Implementar exportação de relatório por vendedor (PDF)
+- [x] Implementar exportação de relatório por cliente (PDF)
+- [x] Implementar exportação de relatório por vendedor (PDF)
 - [ ] Implementar exportação de relatório de produtos (PDF)
-- [ ] Implementar exportação de resumo executivo (PDF)
+- [x] Implementar exportação de resumo executivo (PDF)
 - [ ] Implementar exportação de comparativo de períodos (PDF)
 - [ ] Implementar exportação de positivação geral (PDF)
 - [ ] Implementar exportação de estoque crítico (PDF)
