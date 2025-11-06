@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -14,6 +14,7 @@ export default function Upload() {
   const [message, setMessage] = useState('');
   const [ambienteChecked, setAmbienteChecked] = useState(false);
   const [showFallbackOption, setShowFallbackOption] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Solução 8: Análise de Ambiente ao montar componente
   useEffect(() => {
@@ -36,27 +37,70 @@ export default function Upload() {
     checkAmbiente();
   }, []);
 
+  // Limpar timeout ao desmontar
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFiles(e.target.files);
     setMessage('');
     setShowFallbackOption(false);
   };
 
+  // Função centralizada de tratamento de erros
+  const handleMutationError = (error: any) => {
+    const isBloqueado = 
+      error?.message?.includes('ERR_BLOCKED_BY_CLIENT') ||
+      error?.message?.includes('Failed to fetch') ||
+      error?.message?.includes('NetworkError') ||
+      error?.message?.includes('blocked') ||
+      error?.name === 'AbortError';
+    
+    if (isBloqueado) {
+      console.warn('[UPLOAD] Erro de bloqueio detectado');
+      toast.error('Erro de bloqueio detectado. Tente usar /importar');
+      setShowFallbackOption(true);
+      setMessage('❌ Upload bloqueado. Use a opção abaixo.');
+    } else {
+      const errorMsg = error?.message || 'Erro desconhecido';
+      toast.error(`Erro: ${errorMsg}`);
+      setMessage(`❌ Erro: ${errorMsg}`);
+    }
+  };
+
   // Solução 6: Código com mutation.mutate conforme documento
   const importMutation = trpc.dados.importar.useMutation({
     onSuccess: () => {
+      // Limpar timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      
+      console.log('[UPLOAD] Sucesso! Dados importados');
       setProcessando(false);
       toast.success('Dados importados com sucesso!');
-      setLocation('/');
+      
+      // Pequeno delay antes de redirecionar
+      setTimeout(() => {
+        setLocation('/');
+      }, 100);
     },
     onError: (error) => {
-      if (error.message.includes('ERR_BLOCKED_BY_CLIENT')) {
-        toast.error('Erro de bloqueio detectado. Tente usar a página /importar.');
-        setLocation('/importar');
-      } else {
-        toast.error(`Erro: ${error.message}`);
+      // Limpar timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
+      
+      console.error('[UPLOAD] Erro na mutation:', error);
       setProcessando(false);
+      handleMutationError(error);
     }
   });
 
@@ -73,16 +117,26 @@ export default function Upload() {
       // Checkpoint 1: Início do processo
       console.log('[UPLOAD] Iniciando upload de', files.length, 'arquivo(s)');
       
-      // Ler conteúdo dos arquivos
-      const fileContents: { [key: string]: string } = {};
+      // Ler conteúdo dos arquivos em paralelo (Promise.all)
+      setMessage("Lendo arquivos...");
       
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        setMessage(`Lendo arquivo ${i + 1}/${files.length}: ${file.name}`);
+      const filePromises = Array.from(files).map(async (file, i) => {
         console.log(`[UPLOAD] Lendo arquivo ${i + 1}/${files.length}:`, file.name);
-        const content = await file.text();
-        fileContents[file.name] = content;
-      }
+        try {
+          const content = await file.text();
+          return { name: file.name, content };
+        } catch (error) {
+          console.error(`[UPLOAD] Erro ao ler ${file.name}:`, error);
+          throw error;
+        }
+      });
+
+      const fileResults = await Promise.all(filePromises);
+
+      const fileContents: { [key: string]: string } = {};
+      fileResults.forEach(result => {
+        fileContents[result.name] = result.content;
+      });
 
       // Checkpoint 2: Arquivos lidos
       console.log('[UPLOAD] Todos os arquivos lidos com sucesso');
@@ -104,30 +158,30 @@ export default function Upload() {
         estoque: fileContents['ESTOQUE.csv'] || '',
       };
 
+      // CORREÇÃO CRÍTICA: Timeout de segurança de 60 segundos
+      timeoutRef.current = setTimeout(() => {
+        console.warn('[UPLOAD] ⏱️ TIMEOUT! Resposta não recebida em 60s');
+        setProcessando(false);
+        toast.error('Timeout: servidor não respondeu em 60s. Tente usar /importar');
+        setShowFallbackOption(true);
+        setMessage('❌ Timeout: servidor não respondeu. Use /importar');
+      }, 60000); // 60 segundos
+
+      console.log('[UPLOAD] Timeout de segurança configurado (60s)');
+
       // Solução 6: Usar mutation.mutate conforme documento
       importMutation.mutate(dadosImportacao);
       
     } catch (error: any) {
       console.error('[UPLOAD] Erro capturado:', error);
       
-      // Detectar erro de bloqueio
-      if (
-        error.message?.includes('ERR_BLOCKED_BY_CLIENT') ||
-        error.message?.includes('Failed to fetch') ||
-        error.message?.includes('NetworkError') ||
-        error.message?.includes('blocked')
-      ) {
-        console.warn('[UPLOAD] Erro de bloqueio detectado! Redirecionando para /importar');
-        
-        toast.error('Erro de bloqueio detectado. Tente usar a página /importar.');
-        
-        // Solução 5: Mostrar opção de fallback
-        setShowFallbackOption(true);
-        setMessage('❌ Upload bloqueado. Use a opção abaixo para continuar.');
-      } else {
-        setMessage(`❌ Erro: ${error.message}`);
+      // Limpar timeout se houver
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
       
+      handleMutationError(error);
       setProcessando(false);
     }
   };
