@@ -1,28 +1,19 @@
 # Dashboard Palácio das Baterias - TODO
 
-## Sistema de Upload SIMPLES (REFAZER DO ZERO)
-- [x] Limpar banco de dados completamente
-- [x] Remover código problemático de upload anterior
-- [x] Criar tela super simples (só arrastar e soltar arquivos)
-- [ ] Implementar backend que REALMENTE funciona
-- [ ] Testar com arquivos reais antes de entregar
+## PRIORIDADE MÁXIMA - Upload que FUNCIONA
+- [x] Integrar endpoint de upload no servidor Express principal
+- [x] Atualizar frontend para usar FormData (não base64)
+- [ ] Testar com arquivos CSV reais do usuário
+- [ ] Validar que dados são inseridos corretamente no banco
+- [ ] Confirmar redirecionamento após sucesso
 
-## Dashboard (JÁ FUNCIONANDO)
-- [x] Visão Geral com KPIs
-- [x] Aba Clientes
-- [x] Aba Vendedores  
-- [x] Aba Produtos
-- [x] Aba Positivação
+## Dashboard Completo
+- [x] Todas as abas implementadas (Visão Geral, Clientes, Vendedores, Produtos, etc.)
+- [x] KPIs e métricas funcionando
+- [x] Drill-down de clientes e vendedores
 - [x] Exportação PDF
+- [x] Banco de dados limpo e pronto
 
-## URGENTE - Implementar processamento AGORA
-- [x] Criar endpoint tRPC upload.processar
-- [x] Processar os 5 CSVs enviados pelo usuário
-- [x] Inserir dados no banco
-- [x] Redirecionar para dashboard após sucesso
-- [ ] TESTAR e garantir que funciona
-
-## CORREÇÃO URGENTE - Buffer is not defined
-- [x] Corrigir erro "Buffer is not defined" no frontend
-- [x] Usar FileReader API em vez de Buffer para converter para base64
-- [ ] Testar upload novamente
+## Status
+- Dashboard: ✅ PRONTO
+- Upload: ⚠️ EM CORREÇÃO (fazendo funcionar DE VERDADE)

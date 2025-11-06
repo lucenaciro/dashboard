@@ -1,129 +1,161 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Upload as UploadIcon, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
-import { Link, useLocation } from "wouter";
-import { trpc } from "@/lib/trpc";
+import { useState } from 'react';
+import { useLocation } from 'wouter';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Upload as UploadIcon, ArrowLeft, Loader2 } from 'lucide-react';
 
 export default function Upload() {
   const [, setLocation] = useLocation();
-  const [message, setMessage] = useState("");
+  const [files, setFiles] = useState<FileList | null>(null);
   const [processando, setProcessando] = useState(false);
-  const [sucesso, setSucesso] = useState(false);
+  const [message, setMessage] = useState('');
 
-  const processarMutation = trpc.upload.processar.useMutation({
-    onSuccess: (data) => {
-      setSucesso(true);
-      setMessage(`✅ ${data.totalProcessado} registros processados com sucesso!`);
-      setTimeout(() => setLocation("/"), 2000);
-    },
-    onError: (error) => {
-      setProcessando(false);
-      setMessage(`❌ Erro: ${error.message}`);
-    },
-  });
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFiles(e.target.files);
+    setMessage('');
+  };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const handleUpload = async () => {
+    if (!files || files.length === 0) {
+      setMessage('❌ Selecione pelo menos um arquivo');
+      return;
+    }
 
     setProcessando(true);
     setMessage(`Processando ${files.length} arquivo(s)...`);
 
     try {
-      const arquivos = await Promise.all(
-        Array.from(files).map(async (file) => {
-          return new Promise<{ nome: string; base64: string }>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const base64 = (reader.result as string).split(',')[1];
-              resolve({ nome: file.name, base64 });
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          });
-        })
-      );
+      const formData = new FormData();
+      Array.from(files).forEach(file => {
+        formData.append('files', file);
+      });
 
-      processarMutation.mutate({ arquivos });
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao processar arquivos');
+      }
+
+      const resultado = await response.json();
+      setMessage(`✅ ${resultado.totalProcessado} registros processados com sucesso!`);
+      
+      setTimeout(() => {
+        setLocation('/');
+      }, 2000);
     } catch (error) {
       setProcessando(false);
-      setMessage(`❌ Erro ao ler arquivos: ${error}`);
+      setMessage(`❌ Erro: ${error}`);
     }
   };
 
   return (
     <div className="min-h-screen bg-background p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-4">
-          <Link href="/">
-            <Button variant="outline" size="icon" disabled={processando}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold">Upload de Arquivos</h1>
-            <p className="text-muted-foreground">Envie seus arquivos CSV ou Excel</p>
-          </div>
-        </div>
+      <div className="max-w-4xl mx-auto">
+        <Button
+          variant="ghost"
+          onClick={() => setLocation('/')}
+          className="mb-6"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Voltar ao Dashboard
+        </Button>
 
-        {/* Upload Area */}
-        <Card className="p-12">
-          <div className="flex flex-col items-center justify-center space-y-6">
-            {sucesso ? (
-              <CheckCircle2 className="w-24 h-24 text-green-500" />
-            ) : processando ? (
-              <Loader2 className="w-24 h-24 text-primary animate-spin" />
-            ) : (
-              <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center">
-                <UploadIcon className="w-12 h-12 text-primary" />
-              </div>
-            )}
-            
-            <div className="text-center space-y-2">
-              <h2 className="text-xl font-semibold">
-                {sucesso ? "Processamento Concluído!" : processando ? "Processando..." : "Selecione os arquivos"}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {sucesso ? "Redirecionando para o dashboard..." : "Arraste e solte ou clique para selecionar"}
-              </p>
+        <Card className="p-8">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
+              <UploadIcon className="w-8 h-8 text-primary" />
+            </div>
+            <h1 className="text-3xl font-bold mb-2">Upload de Arquivos</h1>
+            <p className="text-muted-foreground">
+              Envie seus arquivos CSV ou Excel
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+              {processando ? (
+                <div className="flex flex-col items-center gap-4">
+                  <Loader2 className="w-12 h-12 animate-spin text-primary" />
+                  <p className="text-lg font-medium">Processando...</p>
+                  <p className="text-sm text-muted-foreground">{message}</p>
+                </div>
+              ) : (
+                <>
+                  <input
+                    type="file"
+                    id="file-upload"
+                    multiple
+                    accept=".csv,.xlsx,.xls"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="file-upload"
+                    className="cursor-pointer inline-block"
+                  >
+                    <Button type="button" onClick={() => document.getElementById('file-upload')?.click()}>
+                      Escolher Arquivos
+                    </Button>
+                  </label>
+
+                  {files && files.length > 0 && (
+                    <div className="mt-6 p-4 bg-muted rounded-lg">
+                      <p className="font-medium mb-2">
+                        {files.length} arquivo(s) selecionado(s):
+                      </p>
+                      <ul className="text-sm text-muted-foreground space-y-1">
+                        {Array.from(files).map((file, idx) => (
+                          <li key={idx}>{file.name}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {message && (
+                    <div className={`mt-4 p-4 rounded-lg ${
+                      message.startsWith('✅') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                    }`}>
+                      {message}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
-            {!processando && !sucesso && (
-              <>
-                <input
-                  type="file"
-                  multiple
-                  accept=".csv,.xlsx,.xls"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  id="file-upload"
-                />
-                
-                <label htmlFor="file-upload">
-                  <Button size="lg" asChild>
-                    <span>Escolher Arquivos</span>
-                  </Button>
-                </label>
-              </>
+            {files && files.length > 0 && !processando && (
+              <Button
+                onClick={handleUpload}
+                className="w-full"
+                size="lg"
+              >
+                Processar Arquivos
+              </Button>
             )}
 
-            {message && (
-              <div className="text-sm text-center p-4 bg-muted rounded-lg max-w-md">
-                {message}
-              </div>
-            )}
-
-            {!processando && !sucesso && (
-              <div className="text-xs text-muted-foreground text-center max-w-md">
-                <p>Formatos aceitos: CSV, Excel (.xlsx, .xls)</p>
-                <p className="mt-2">
+            <div className="bg-muted p-6 rounded-lg">
+              <h3 className="font-semibold mb-3">Instruções:</h3>
+              <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
+                <li>Prepare seus arquivos CSV ou Excel com os dados atualizados</li>
+                <li>Certifique-se de que os arquivos seguem o formato esperado</li>
+                <li>Clique em "Escolher Arquivos" e selecione todos os arquivos de uma vez</li>
+                <li>Aguarde o processamento (isso pode levar alguns minutos)</li>
+                <li>Você será redirecionado automaticamente para o dashboard</li>
+              </ol>
+              
+              <div className="mt-4 pt-4 border-t border-border">
+                <p className="text-xs text-muted-foreground">
+                  <strong>Formatos aceitos:</strong> CSV, Excel (.xlsx, .xls)
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
                   <strong>Arquivos esperados:</strong> CADASTRO_CLIENTES.csv, CADASTRO_VENDEDORES.csv, 
                   MOVIMENTO_DISTRIBUIDOR.csv, RELACAO_PRODUTOS.csv, ESTOQUE.csv
                 </p>
               </div>
-            )}
+            </div>
           </div>
         </Card>
       </div>
