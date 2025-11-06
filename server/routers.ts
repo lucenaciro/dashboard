@@ -2,9 +2,10 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
+import { z } from "zod";
+import * as db from "./db";
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
@@ -17,12 +18,98 @@ export const appRouter = router({
     }),
   }),
 
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  dashboard: router({
+    // Get KPIs principais
+    kpis: publicProcedure
+      .input(z.object({
+        dataInicio: z.string().optional(),
+        dataFim: z.string().optional(),
+        vendedores: z.array(z.string()).optional(),
+        clientes: z.array(z.string()).optional(),
+        tiposCliente: z.array(z.string()).optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return await db.getKPIs(input);
+      }),
+
+    // Get top clientes
+    topClientes: publicProcedure
+      .input(z.object({
+        limit: z.number().default(10),
+        dataInicio: z.string().optional(),
+        dataFim: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        return await db.getTopClientes(input.limit, {
+          dataInicio: input.dataInicio,
+          dataFim: input.dataFim,
+        });
+      }),
+
+    // Get top produtos
+    topProdutos: publicProcedure
+      .input(z.object({
+        limit: z.number().default(10),
+        dataInicio: z.string().optional(),
+        dataFim: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        return await db.getTopProdutos(input.limit, {
+          dataInicio: input.dataInicio,
+          dataFim: input.dataFim,
+        });
+      }),
+
+    // Get evolução mensal
+    evolucaoMensal: publicProcedure
+      .input(z.object({
+        meses: z.number().default(12),
+      }))
+      .query(async ({ input }) => {
+        return await db.getEvolucaoMensal(input.meses);
+      }),
+
+    // Get análise de positivação
+    positivacao: publicProcedure
+      .query(async () => {
+        return await db.getAnalisePositivacao();
+      }),
+  }),
+
+  clientes: router({
+    // Lista de clientes com métricas
+    list: publicProcedure
+      .input(z.object({
+        dataInicio: z.string().optional(),
+        dataFim: z.string().optional(),
+        tiposCliente: z.array(z.string()).optional(),
+        busca: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return await db.getClientesComMetricas(input);
+      }),
+
+    // Histórico de um cliente
+    historico: publicProcedure
+      .input(z.object({
+        codigoCliente: z.string(),
+      }))
+      .query(async ({ input }) => {
+        return await db.getHistoricoCliente(input.codigoCliente);
+      }),
+  }),
+
+  vendedores: router({
+    // Lista de vendedores com métricas
+    list: publicProcedure
+      .input(z.object({
+        dataInicio: z.string().optional(),
+        dataFim: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return await db.getVendedoresComMetricas(input);
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
