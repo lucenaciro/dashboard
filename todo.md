@@ -47,3 +47,9 @@
 - [x] Salvar conteúdo temporário no localStorage
 - [x] Adicionar checkpoints com logs no processo
 - [ ] Testar solução completa
+
+## 🚀 Soluções Faltantes do Documento
+- [x] 3. Upload em Camadas (S3/Blob + polling no backend)
+- [x] 4. Upload via WebSocket (socket.io)
+- [x] 7. Save Points no backend (db.logs_uploads)
+- [x] 8. Análise de Ambiente (detectar bloqueadores via navigator.plugins)

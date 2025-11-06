@@ -186,3 +186,26 @@ export const sellOut = mysqlTable("sellOut", {
 
 export type SellOut = typeof sellOut.$inferSelect;
 export type InsertSellOut = typeof sellOut.$inferInsert;
+
+/**
+ * Solução 7: Tabela de logs de upload com save points
+ * Todas as rotinas devem ter checkpoints com logs (inicio, parsing, envio, conclusao)
+ */
+export const logsUploads = mysqlTable("logs_uploads", {
+  id: int("id").autoincrement().primaryKey(),
+  uploadId: varchar("uploadId", { length: 100 }).notNull().unique(),
+  status: mysqlEnum("status", ["iniciado", "parsing", "enviando", "processando", "concluido", "erro"]).notNull(),
+  totalArquivos: int("totalArquivos"),
+  arquivosProcessados: int("arquivosProcessados").default(0),
+  totalRegistros: int("totalRegistros"),
+  registrosProcessados: int("registrosProcessados").default(0),
+  erros: text("erros"), // JSON array de erros
+  checkpoint: varchar("checkpoint", { length: 50 }), // "inicio", "parsing", "envio", "conclusao"
+  timestampInicio: timestamp("timestampInicio").defaultNow(),
+  timestampFim: timestamp("timestampFim"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type LogUpload = typeof logsUploads.$inferSelect;
+export type InsertLogUpload = typeof logsUploads.$inferInsert;
