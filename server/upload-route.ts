@@ -1,9 +1,13 @@
 import { Router } from 'express';
 import multer from 'multer';
+import cors from 'cors';
 import { processarUpload } from './process-upload';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
+
+// Enable CORS for upload endpoint
+router.use(cors());
 
 router.post('/api/upload', upload.array('files'), async (req, res) => {
   try {

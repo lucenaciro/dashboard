@@ -4,9 +4,184 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
+import { getDb } from "./db";
+import { clientes, vendedores, produtos, movimentacoes, estoque } from "../drizzle/schema";
 import { processarUpload } from "./process-upload";
 
 export const appRouter = router({
+  dados: router({
+    importar: publicProcedure
+      .input(
+        z.object({
+          clientes: z.string(),
+          vendedores: z.string(),
+          produtos: z.string(),
+          movimentacoes: z.string(),
+          estoque: z.string(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error('Database not available');
+
+        let totalProcessado = 0;
+
+        // Processar clientes
+        if (input.clientes) {
+          const linhas = input.clientes.split('\n').filter(l => l.trim());
+          const headers = linhas[0].split(';');
+          
+          for (let i = 1; i < linhas.length; i++) {
+            const valores = linhas[i].split(';');
+            const row: Record<string, string> = {};
+            headers.forEach((h, idx) => {
+              row[h.trim()] = valores[idx]?.trim() || '';
+            });
+
+            try {
+              await db.insert(clientes).values({
+                codigoCliente: row['CODIGO'] || '',
+                nome: row['NOME'] || '',
+                cnpj: row['CNPJ'] || null,
+                municipio: row['CIDADE'] || null,
+                estado: row['ESTADO'] || null,
+                tipoCliente: (row['TIPO'] || 'revendedor') as 'loja_propria' | 'revendedor' | 'consumidor_final',
+              }).onDuplicateKeyUpdate({ set: { codigoCliente: row['CODIGO'] } });
+              totalProcessado++;
+            } catch (e) {
+              console.error('Erro ao inserir cliente:', e);
+            }
+          }
+        }
+
+        // Processar vendedores
+        if (input.vendedores) {
+          const linhas = input.vendedores.split('\n').filter(l => l.trim());
+          const headers = linhas[0].split(';');
+          
+          for (let i = 1; i < linhas.length; i++) {
+            const valores = linhas[i].split(';');
+            const row: Record<string, string> = {};
+            headers.forEach((h, idx) => {
+              row[h.trim()] = valores[idx]?.trim() || '';
+            });
+
+            try {
+              await db.insert(vendedores).values({
+                codigoVendedor: row['CODIGO'] || '',
+                nome: row['NOME'] || '',
+              }).onDuplicateKeyUpdate({ set: { codigoVendedor: row['CODIGO'] } });
+              totalProcessado++;
+            } catch (e) {
+              console.error('Erro ao inserir vendedor:', e);
+            }
+          }
+        }
+
+        // Processar produtos
+        if (input.produtos) {
+          const linhas = input.produtos.split('\n').filter(l => l.trim());
+          const headers = linhas[0].split(';');
+          
+          for (let i = 1; i < linhas.length; i++) {
+            const valores = linhas[i].split(';');
+            const row: Record<string, string> = {};
+            headers.forEach((h, idx) => {
+              row[h.trim()] = valores[idx]?.trim() || '';
+            });
+
+            try {
+              await db.insert(produtos).values({
+                codigoProduto: row['CODIGO'] || '',
+                descricao: row['DESCRICAO'] || '',
+              }).onDuplicateKeyUpdate({ set: { codigoProduto: row['CODIGO'] } });
+              totalProcessado++;
+            } catch (e) {
+              console.error('Erro ao inserir produto:', e);
+            }
+          }
+        }
+
+        // Processar movimentações
+        if (input.movimentacoes) {
+          const linhas = input.movimentacoes.split('\n').filter(l => l.trim());
+          const headers = linhas[0].split(';');
+          
+          for (let i = 1; i < linhas.length; i++) {
+            const valores = linhas[i].split(';');
+            const row: Record<string, string> = {};
+            headers.forEach((h, idx) => {
+              row[h.trim()] = valores[idx]?.trim() || '';
+            });
+
+            try {
+              const parseData = (dataStr: string): Date | null => {
+                if (!dataStr) return null;
+                const partes = dataStr.split('/');
+                if (partes.length === 3) {
+                  return new Date(`${partes[2]}-${partes[1]}-${partes[0]}`);
+                }
+                return new Date(dataStr);
+              };
+
+              const parseValor = (valorStr: string): number => {
+                const valor = parseFloat(valorStr.replace(',', '.'));
+                return Math.round(valor * 100); // Converter para centavos
+              };
+
+              await db.insert(movimentacoes).values({
+                codigoCliente: row['CODIGO_CLIENTE'] || '',
+                codigoVendedor: row['CODIGO_VENDEDOR'] || '',
+                codigoProduto: row['CODIGO_PRODUTO'] || '',
+                data: parseData(row['DATA_PEDIDO']) || new Date(),
+                quantidade: parseInt(row['QUANTIDADE'] || '0'),
+                valorTotal: parseValor(row['VALOR_TOTAL'] || '0'),
+              });
+              totalProcessado++;
+            } catch (e) {
+              console.error('Erro ao inserir movimentação:', e);
+            }
+          }
+        }
+
+        // Processar estoque
+        if (input.estoque) {
+          const linhas = input.estoque.split('\n').filter(l => l.trim());
+          const headers = linhas[0].split(';');
+          
+          for (let i = 1; i < linhas.length; i++) {
+            const valores = linhas[i].split(';');
+            const row: Record<string, string> = {};
+            headers.forEach((h, idx) => {
+              row[h.trim()] = valores[idx]?.trim() || '';
+            });
+
+            try {
+              const parseData = (dataStr: string): Date | null => {
+                if (!dataStr) return new Date();
+                const partes = dataStr.split('/');
+                if (partes.length === 3) {
+                  return new Date(`${partes[2]}-${partes[1]}-${partes[0]}`);
+                }
+                return new Date(dataStr);
+              };
+
+              await db.insert(estoque).values({
+                codigoProduto: row['CODIGO_PRODUTO'] || '',
+                quantidade: parseInt(row['QUANTIDADE'] || '0'),
+                dataEstoque: parseData(row['DATA_ESTOQUE']) || new Date(),
+                distribuidor: row['DISTRIBUIDOR'] || null,
+              });
+              totalProcessado++;
+            } catch (e) {
+              console.error('Erro ao inserir estoque:', e);
+            }
+          }
+        }
+
+        return { totalProcessado, sucesso: true };
+      }),
+  }),
   upload: router({
     processar: publicProcedure
       .input(z.object({
