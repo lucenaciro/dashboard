@@ -40,3 +40,10 @@
 ## 🧹 Limpeza de Dados
 - [x] Limpar todas as tabelas do banco de dados
 - [x] Verificar que dashboard está vazio
+
+## 🔧 Solução para Erro de Upload (ERR_BLOCKED_BY_CLIENT)
+- [x] Implementar detecção de erro ERR_BLOCKED_BY_CLIENT no Upload.tsx
+- [x] Adicionar fallback automático para /importar
+- [x] Salvar conteúdo temporário no localStorage
+- [x] Adicionar checkpoints com logs no processo
+- [ ] Testar solução completa
