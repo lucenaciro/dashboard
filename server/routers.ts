@@ -7,6 +7,9 @@ import * as db from "./db";
 import { getDb } from "./db";
 import { clientes, vendedores, produtos, movimentacoes, estoque } from "../drizzle/schema";
 import { processarUpload } from "./process-upload";
+import { validarDados, validarIntegridadeAvancada, criarCadastrosFaltantes, schemas } from "./validators";
+import { logger } from "./logger";
+import { processarArquivoInteligente } from "./polarsProcessor";
 
 export const appRouter = router({
   dados: router({
@@ -25,18 +28,46 @@ export const appRouter = router({
         if (!db) throw new Error('Database not available');
 
         let totalProcessado = 0;
+        let totalErros = 0;
+        const logId = logger.startProcessing(1, 'importacao_completa');
 
         // Processar clientes
         if (input.clientes) {
+          // Verificar se deve usar Polars
+          const processamento = await processarArquivoInteligente(input.clientes, 'clientes');
+          if (processamento.metodo === 'polars') {
+            logger.info('Arquivo processado com Polars', processamento.resultado);
+          }
           const linhas = input.clientes.split('\n').filter(l => l.trim());
           const headers = linhas[0].split(';');
           
-          for (let i = 1; i < linhas.length; i++) {
-            const valores = linhas[i].split(';');
+          // Parsear dados
+          const dadosClientes = linhas.slice(1).map(linha => {
+            const valores = linha.split(';');
             const row: Record<string, string> = {};
             headers.forEach((h, idx) => {
               row[h.trim()] = valores[idx]?.trim() || '';
             });
+            return row;
+          });
+
+          // VALIDAR DADOS
+          const validacao = validarDados(dadosClientes, 'clientes');
+          logger.info(`Validação clientes: ${validacao.linhasValidas} válidas, ${validacao.linhasInvalidas} inválidas`);
+          
+          validacao.erros.forEach(erro => {
+            logger.logInvalidField(logId, erro.linha, erro.campo, erro.valor, erro.erro);
+          });
+
+          // Inserir apenas dados válidos
+          for (let i = 0; i < dadosClientes.length; i++) {
+            const row = dadosClientes[i];
+            
+            // Pular linhas inválidas
+            if (validacao.erros.some(e => e.linha === i + 1)) {
+              totalErros++;
+              continue;
+            }
 
             try {
               await db.insert(clientes).values({
@@ -49,7 +80,8 @@ export const appRouter = router({
               }).onDuplicateKeyUpdate({ set: { codigoCliente: row['CODIGO'] } });
               totalProcessado++;
             } catch (e) {
-              console.error('Erro ao inserir cliente:', e);
+              logger.error('Erro ao inserir cliente', { linha: i + 1, erro: e });
+              totalErros++;
             }
           }
         }
@@ -104,6 +136,65 @@ export const appRouter = router({
 
         // Processar movimentações
         if (input.movimentacoes) {
+          // VALIDAÇÃO DE INTEGRIDADE REFERENCIAL
+          const dadosParsed = {
+            clientes: input.clientes ? input.clientes.split('\n').slice(1).map(l => {
+              const vals = l.split(';');
+              return { CODIGO: vals[0] };
+            }) : [],
+            vendedores: input.vendedores ? input.vendedores.split('\n').slice(1).map(l => {
+              const vals = l.split(';');
+              return { CODIGO: vals[0] };
+            }) : [],
+            produtos: input.produtos ? input.produtos.split('\n').slice(1).map(l => {
+              const vals = l.split(';');
+              return { CODIGO: vals[0] };
+            }) : [],
+            movimentacoes: input.movimentacoes.split('\n').slice(1).map(l => {
+              const vals = l.split(';');
+              return {
+                CODIGO_CLIENTE: vals[0],
+                CODIGO_VENDEDOR: vals[1],
+                CODIGO_PRODUTO: vals[2],
+              };
+            }),
+          };
+
+          const integridadeResult = validarIntegridadeAvancada(dadosParsed);
+          logger.info(`Validação de integridade: ${integridadeResult.estatisticas.movimentacoesValidas} válidas, ${integridadeResult.estatisticas.movimentacoesInvalidas} inválidas`);
+          
+          if (!integridadeResult.valido) {
+            logger.warn(`Encontrados ${integridadeResult.erros.length} erros de integridade. Sugestão: ${integridadeResult.sugestaoCorrecao}`);
+            
+            // Se sugestão for criar cadastros, criar automaticamente
+            if (integridadeResult.sugestaoCorrecao === 'criar_cadastro') {
+              const cadastrosFaltantes = criarCadastrosFaltantes(dadosParsed);
+              logger.info(`Criando ${cadastrosFaltantes.novosClientes.length} clientes, ${cadastrosFaltantes.novosVendedores.length} vendedores, ${cadastrosFaltantes.novosProdutos.length} produtos faltantes`);
+              
+              // Inserir cadastros faltantes
+              for (const c of cadastrosFaltantes.novosClientes) {
+                await db.insert(clientes).values({
+                  codigoCliente: c.CODIGO,
+                  nome: c.NOME,
+                  tipoCliente: c.TIPO || 'consumidor_final',
+                }).onDuplicateKeyUpdate({ set: { codigoCliente: c.CODIGO } });
+              }
+              
+              for (const v of cadastrosFaltantes.novosVendedores) {
+                await db.insert(vendedores).values({
+                  codigoVendedor: v.CODIGO,
+                  nome: v.NOME,
+                }).onDuplicateKeyUpdate({ set: { codigoVendedor: v.CODIGO } });
+              }
+              
+              for (const p of cadastrosFaltantes.novosProdutos) {
+                await db.insert(produtos).values({
+                  codigoProduto: p.CODIGO,
+                  descricao: p.DESCRICAO,
+                }).onDuplicateKeyUpdate({ set: { codigoProduto: p.CODIGO } });
+              }
+            }
+          }
           const linhas = input.movimentacoes.split('\n').filter(l => l.trim());
           const headers = linhas[0].split(';');
           
@@ -179,7 +270,17 @@ export const appRouter = router({
           }
         }
 
-        return { totalProcessado, sucesso: true };
+        // Finalizar logging
+        logger.endProcessing(logId, true);
+        const processLog = logger.getProcessLog(logId);
+
+        return { 
+          totalProcessado, 
+          totalErros,
+          totalInserido: totalProcessado,
+          sucesso: true,
+          log: processLog
+        };
       }),
   }),
   upload: router({
@@ -281,6 +382,94 @@ export const appRouter = router({
       }))
       .query(async ({ input }) => {
         return await db.getHistoricoCliente(input.codigoCliente);
+      }),
+  }),
+
+  pdf: router({
+    gerarRelatorio: publicProcedure
+      .input(z.object({
+        tipo: z.enum(['clientes', 'vendedores', 'executivo', 'produtos']),
+        dados: z.any(),
+      }))
+      .mutation(async ({ input }) => {
+        const { gerarPDF } = await import('./pdfGenerator');
+        const pdfBuffer = await gerarPDF({
+          titulo: `Relatório ${input.tipo}`,
+          dados: input.dados,
+          tipo: input.tipo,
+        });
+        
+        // Retornar base64 para download no frontend
+        return {
+          pdf: pdfBuffer.toString('base64'),
+          filename: `relatorio-${input.tipo}-${Date.now()}.pdf`,
+        };
+      }),
+  }),
+
+  ciclos: router({
+    listar: publicProcedure.query(async () => {
+      const database = await getDb();
+      if (!database) throw new Error('Database not available');
+      const { ciclos } = await import('../drizzle/schema');
+      return await database.select().from(ciclos).orderBy(ciclos.createdAt);
+    }),
+
+    criar: publicProcedure
+      .input(z.object({
+        nome: z.string(),
+        descricao: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const database = await getDb();
+        if (!database) throw new Error('Database not available');
+        const { ciclos } = await import('../drizzle/schema');
+        
+        const [ciclo] = await database.insert(ciclos).values({
+          nome: input.nome,
+          descricao: input.descricao,
+          status: 'ativo',
+        });
+        
+        return ciclo;
+      }),
+  }),
+
+  logs: router({
+    obter: publicProcedure
+      .input(z.object({
+        logId: z.string(),
+      }))
+      .query(async ({ input }) => {
+        return logger.getProcessLog(input.logId);
+      }),
+
+    baixarTXT: publicProcedure
+      .input(z.object({
+        logId: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const filepath = await logger.saveToTXT(input.logId);
+        const fs = await import('fs/promises');
+        const content = await fs.readFile(filepath, 'utf-8');
+        return {
+          content,
+          filename: `log-${input.logId}.txt`,
+        };
+      }),
+
+    baixarJSON: publicProcedure
+      .input(z.object({
+        logId: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const filepath = await logger.saveToJSON(input.logId);
+        const fs = await import('fs/promises');
+        const content = await fs.readFile(filepath, 'utf-8');
+        return {
+          content,
+          filename: `log-${input.logId}.json`,
+        };
       }),
   }),
 
