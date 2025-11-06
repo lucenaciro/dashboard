@@ -23,3 +23,11 @@
 - [x] Ativar logging em todas operações
 - [x] Implementar validação de integridade antes de inserir
 - [x] Adicionar UI para gerenciar ciclos
+
+## 🔧 Correções Necessárias
+- [x] Corrigir schema da tabela ciclos (adicionar createdAt)
+- [x] Corrigir validadores e exports
+- [x] Implementar PDF com WeasyPrint de verdade
+- [x] Corrigir incompatibilidade frontend/backend
+- [x] Corrigir integridade referencial e imports
+- [x] Testar TODAS as funcionalidades

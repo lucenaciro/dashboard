@@ -10,6 +10,8 @@ export interface ValidationError {
   erro: string;
 }
 
+
+
 export interface ValidationResult {
   valido: boolean;
   erros: ValidationError[];

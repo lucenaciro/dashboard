@@ -3,58 +3,23 @@ import { useLocation } from 'wouter';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import FileDropZone from '@/components/FileDropZone';
-import ColumnMapper from '@/components/ColumnMapper';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react';
-
-type TipoArquivo = 'clientes' | 'vendedores' | 'produtos' | 'movimentacoes' | 'estoque';
-
-const SCHEMAS = {
-  clientes: [
-    { name: 'CODIGO', label: 'Código', required: true },
-    { name: 'NOME', label: 'Nome', required: true },
-    { name: 'CNPJ', label: 'CNPJ', required: false },
-    { name: 'CIDADE', label: 'Cidade', required: false },
-    { name: 'ESTADO', label: 'Estado', required: false },
-    { name: 'TIPO', label: 'Tipo', required: false },
-  ],
-  vendedores: [
-    { name: 'CODIGO', label: 'Código', required: true },
-    { name: 'NOME', label: 'Nome', required: true },
-  ],
-  produtos: [
-    { name: 'CODIGO', label: 'Código', required: true },
-    { name: 'DESCRICAO', label: 'Descrição', required: true },
-  ],
-  movimentacoes: [
-    { name: 'CODIGO_CLIENTE', label: 'Código Cliente', required: true },
-    { name: 'CODIGO_VENDEDOR', label: 'Código Vendedor', required: false },
-    { name: 'CODIGO_PRODUTO', label: 'Código Produto', required: true },
-    { name: 'DATA_PEDIDO', label: 'Data Pedido', required: true },
-    { name: 'QUANTIDADE', label: 'Quantidade', required: true },
-    { name: 'VALOR_TOTAL', label: 'Valor Total', required: true },
-  ],
-  estoque: [
-    { name: 'CODIGO_PRODUTO', label: 'Código Produto', required: true },
-    { name: 'QUANTIDADE', label: 'Quantidade', required: true },
-    { name: 'DATA_ESTOQUE', label: 'Data Estoque', required: true },
-    { name: 'DISTRIBUIDOR', label: 'Distribuidor', required: false },
-  ],
-};
+import { ArrowLeft, Upload } from 'lucide-react';
 
 export default function Importar() {
   const [, setLocation] = useLocation();
   const navigate = (path: string) => setLocation(path);
-  const [etapa, setEtapa] = useState<'upload' | 'mapeamento' | 'validacao' | 'importando'>('upload');
-  const [arquivosSelecionados, setArquivosSelecionados] = useState<File[]>([]);
-  const [arquivoAtual, setArquivoAtual] = useState<{ tipo: TipoArquivo; conteudo: string; colunas: string[] } | null>(null);
-  const [mapeamentos, setMapeamentos] = useState<Record<string, Record<string, string>>>({});
-  const [validacaoResult, setValidacaoResult] = useState<any>(null);
+
+  const [clientes, setClientes] = useState('');
+  const [vendedores, setVendedores] = useState('');
+  const [produtos, setProdutos] = useState('');
+  const [movimentacoes, setMovimentacoes] = useState('');
+  const [estoque, setEstoque] = useState('');
 
   const importarMutation = trpc.dados.importar.useMutation({
     onSuccess: (result: any) => {
-      toast.success(`Importação concluída! ${result.totalInserido} registros inseridos.`);
+      toast.success(`Importação concluída! ${result.totalProcessado} registros processados.`);
       navigate('/');
     },
     onError: (error: any) => {
@@ -62,91 +27,19 @@ export default function Importar() {
     },
   });
 
-  const handleFilesSelected = async (files: File[]) => {
-    setArquivosSelecionados(files);
-    
-    if (files.length > 0) {
-      // Processar primeiro arquivo
-      const file = files[0];
-      const tipo = detectarTipo(file.name);
-      const conteudo = await file.text();
-      const linhas = conteudo.split('\n').filter(l => l.trim());
-      const colunas = linhas[0].split(';').map(c => c.trim());
-
-      setArquivoAtual({ tipo, conteudo, colunas });
-      setEtapa('mapeamento');
-    }
-  };
-
-  const detectarTipo = (filename: string): TipoArquivo => {
-    const lower = filename.toLowerCase();
-    if (lower.includes('cliente')) return 'clientes';
-    if (lower.includes('vendedor')) return 'vendedores';
-    if (lower.includes('produto')) return 'produtos';
-    if (lower.includes('moviment') || lower.includes('venda')) return 'movimentacoes';
-    if (lower.includes('estoque')) return 'estoque';
-    return 'clientes';
-  };
-
-  const handleMapeamentoCompleto = (mapping: Record<string, string>) => {
-    if (!arquivoAtual) return;
-
-    setMapeamentos(prev => ({
-      ...prev,
-      [arquivoAtual.tipo]: mapping,
-    }));
-
-    setEtapa('validacao');
-    validarDados(arquivoAtual.tipo, arquivoAtual.conteudo, mapping);
-  };
-
-  const validarDados = async (tipo: TipoArquivo, conteudo: string, mapping: Record<string, string>) => {
-    // Parsear CSV
-    const linhas = conteudo.split('\n').filter(l => l.trim());
-    const cabecalho = linhas[0].split(';');
-    const dados = linhas.slice(1).map(linha => {
-      const valores = linha.split(';');
-      const obj: Record<string, any> = {};
-      cabecalho.forEach((col, idx) => {
-        const targetCol = mapping[col.trim()];
-        if (targetCol) {
-          obj[targetCol] = valores[idx]?.trim();
-        }
-      });
-      return obj;
-    });
-
-    // Simular validação (em produção, chamar endpoint tRPC)
-    const erros = dados.filter((_, idx) => idx % 100 === 0).map((d, idx) => ({
-      linha: idx * 100 + 1,
-      campo: 'CODIGO',
-      erro: 'Exemplo de erro de validação',
-    }));
-
-    setValidacaoResult({
-      valido: erros.length === 0,
-      totalLinhas: dados.length,
-      linhasValidas: dados.length - erros.length,
-      linhasInvalidas: erros.length,
-      erros: erros.slice(0, 10), // Mostrar só primeiros 10
-    });
-  };
-
   const handleImportar = () => {
-    if (!arquivoAtual) return;
+    if (!clientes && !vendedores && !produtos && !movimentacoes && !estoque) {
+      toast.error('Cole pelo menos um tipo de dados para importar');
+      return;
+    }
 
-    setEtapa('importando');
-    
-    // Preparar dados no formato esperado pelo endpoint
-    const dadosImportar = {
-      clientes: arquivoAtual.tipo === 'clientes' ? arquivoAtual.conteudo : '',
-      vendedores: arquivoAtual.tipo === 'vendedores' ? arquivoAtual.conteudo : '',
-      produtos: arquivoAtual.tipo === 'produtos' ? arquivoAtual.conteudo : '',
-      movimentacoes: arquivoAtual.tipo === 'movimentacoes' ? arquivoAtual.conteudo : '',
-      estoque: arquivoAtual.tipo === 'estoque' ? arquivoAtual.conteudo : '',
-    };
-    
-    importarMutation.mutate(dadosImportar);
+    importarMutation.mutate({
+      clientes,
+      vendedores,
+      produtos,
+      movimentacoes,
+      estoque,
+    });
   };
 
   return (
@@ -159,98 +52,106 @@ export default function Importar() {
           </Button>
           <div>
             <h1 className="text-3xl font-bold">Importação de Dados</h1>
-            <p className="text-muted-foreground">Sistema completo com validação e mapeamento</p>
+            <p className="text-muted-foreground">Cole os dados CSV nos campos abaixo</p>
           </div>
         </div>
 
-        {/* Indicador de etapas */}
-        <div className="mb-8 flex items-center justify-between">
-          {['upload', 'mapeamento', 'validacao', 'importando'].map((e, idx) => (
-            <div key={e} className="flex items-center">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                etapa === e ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-              }`}>
-                {idx + 1}
-              </div>
-              {idx < 3 && <div className="w-16 h-0.5 bg-muted mx-2" />}
-            </div>
-          ))}
-        </div>
-
-        {/* Etapa 1: Upload */}
-        {etapa === 'upload' && (
-          <FileDropZone
-            onFilesSelected={handleFilesSelected}
-            acceptedTypes=".csv,.xlsx"
-            maxFiles={5}
-          />
-        )}
-
-        {/* Etapa 2: Mapeamento */}
-        {etapa === 'mapeamento' && arquivoAtual && (
-          <ColumnMapper
-            sourceColumns={arquivoAtual.colunas}
-            targetColumns={SCHEMAS[arquivoAtual.tipo]}
-            onMappingComplete={handleMapeamentoCompleto}
-            tipoArquivo={arquivoAtual.tipo}
-          />
-        )}
-
-        {/* Etapa 3: Validação */}
-        {etapa === 'validacao' && validacaoResult && (
+        <div className="space-y-6">
+          {/* Clientes */}
           <Card className="p-6">
-            <h2 className="text-xl font-bold mb-4">Resultado da Validação</h2>
+            <h2 className="text-lg font-semibold mb-3">1. Clientes</h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              Formato esperado: CODIGO;NOME;CNPJ;CIDADE;ESTADO;TIPO
+            </p>
+            <Textarea
+              value={clientes}
+              onChange={(e) => setClientes(e.target.value)}
+              placeholder="Cole aqui o conteúdo do arquivo CADASTRO_CLIENTES.csv"
+              rows={5}
+              className="font-mono text-sm"
+            />
+          </Card>
 
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <Card className="p-4">
-                <p className="text-sm text-muted-foreground">Total de Linhas</p>
-                <p className="text-2xl font-bold">{validacaoResult.totalLinhas}</p>
-              </Card>
-              <Card className="p-4">
-                <p className="text-sm text-muted-foreground">Linhas Válidas</p>
-                <p className="text-2xl font-bold text-green-600">{validacaoResult.linhasValidas}</p>
-              </Card>
-              <Card className="p-4">
-                <p className="text-sm text-muted-foreground">Linhas Inválidas</p>
-                <p className="text-2xl font-bold text-red-600">{validacaoResult.linhasInvalidas}</p>
-              </Card>
-            </div>
+          {/* Vendedores */}
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-3">2. Vendedores</h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              Formato esperado: CODIGO;NOME
+            </p>
+            <Textarea
+              value={vendedores}
+              onChange={(e) => setVendedores(e.target.value)}
+              placeholder="Cole aqui o conteúdo do arquivo CADASTRO_VENDEDORES.csv"
+              rows={5}
+              className="font-mono text-sm"
+            />
+          </Card>
 
-            {validacaoResult.erros.length > 0 && (
-              <div className="mb-6">
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-yellow-600" />
-                  Erros Encontrados (primeiros 10)
-                </h3>
-                <div className="space-y-2">
-                  {validacaoResult.erros.map((erro: any, idx: number) => (
-                    <div key={idx} className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
-                      Linha {erro.linha}, Campo "{erro.campo}": {erro.erro}
-                    </div>
-                  ))}
-                </div>
+          {/* Produtos */}
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-3">3. Produtos</h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              Formato esperado: CODIGO;DESCRICAO
+            </p>
+            <Textarea
+              value={produtos}
+              onChange={(e) => setProdutos(e.target.value)}
+              placeholder="Cole aqui o conteúdo do arquivo RELACAO_PRODUTOS.csv"
+              rows={5}
+              className="font-mono text-sm"
+            />
+          </Card>
+
+          {/* Movimentações */}
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-3">4. Movimentações</h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              Formato esperado: CODIGO_CLIENTE;CODIGO_VENDEDOR;CODIGO_PRODUTO;DATA_PEDIDO;QUANTIDADE;VALOR_TOTAL
+            </p>
+            <Textarea
+              value={movimentacoes}
+              onChange={(e) => setMovimentacoes(e.target.value)}
+              placeholder="Cole aqui o conteúdo do arquivo MOVIMENTO_DISTRIBUIDOR.csv"
+              rows={5}
+              className="font-mono text-sm"
+            />
+          </Card>
+
+          {/* Estoque */}
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-3">5. Estoque</h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              Formato esperado: CODIGO_PRODUTO;QUANTIDADE;DATA_ESTOQUE;DISTRIBUIDOR
+            </p>
+            <Textarea
+              value={estoque}
+              onChange={(e) => setEstoque(e.target.value)}
+              placeholder="Cole aqui o conteúdo do arquivo ESTOQUE.csv"
+              rows={5}
+              className="font-mono text-sm"
+            />
+          </Card>
+
+          {/* Botão de importar */}
+          <Card className="p-6 bg-blue-50 border-blue-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-blue-900">Pronto para importar?</h3>
+                <p className="text-sm text-blue-700">
+                  {importarMutation.isPending ? 'Processando...' : 'Clique no botão para iniciar a importação'}
+                </p>
               </div>
-            )}
-
-            <div className="flex gap-4">
-              <Button onClick={() => setEtapa('mapeamento')} variant="outline">
-                Voltar ao Mapeamento
-              </Button>
-              <Button onClick={handleImportar} disabled={!validacaoResult.valido && validacaoResult.linhasInvalidas > validacaoResult.linhasValidas * 0.1}>
-                {validacaoResult.valido ? 'Importar Dados' : 'Importar Mesmo Assim'}
+              <Button 
+                onClick={handleImportar} 
+                disabled={importarMutation.isPending}
+                size="lg"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                {importarMutation.isPending ? 'Importando...' : 'Importar Dados'}
               </Button>
             </div>
           </Card>
-        )}
-
-        {/* Etapa 4: Importando */}
-        {etapa === 'importando' && (
-          <Card className="p-8 text-center">
-            <div className="animate-spin w-16 h-16 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2">Importando dados...</h2>
-            <p className="text-muted-foreground">Aguarde enquanto processamos seus arquivos</p>
-          </Card>
-        )}
+        </div>
       </div>
     </div>
   );

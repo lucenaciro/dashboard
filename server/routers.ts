@@ -172,26 +172,29 @@ export const appRouter = router({
               logger.info(`Criando ${cadastrosFaltantes.novosClientes.length} clientes, ${cadastrosFaltantes.novosVendedores.length} vendedores, ${cadastrosFaltantes.novosProdutos.length} produtos faltantes`);
               
               // Inserir cadastros faltantes
-              for (const c of cadastrosFaltantes.novosClientes) {
-                await db.insert(clientes).values({
-                  codigoCliente: c.CODIGO,
-                  nome: c.NOME,
-                  tipoCliente: c.TIPO || 'consumidor_final',
-                }).onDuplicateKeyUpdate({ set: { codigoCliente: c.CODIGO } });
-              }
-              
-              for (const v of cadastrosFaltantes.novosVendedores) {
-                await db.insert(vendedores).values({
-                  codigoVendedor: v.CODIGO,
-                  nome: v.NOME,
-                }).onDuplicateKeyUpdate({ set: { codigoVendedor: v.CODIGO } });
-              }
-              
-              for (const p of cadastrosFaltantes.novosProdutos) {
-                await db.insert(produtos).values({
-                  codigoProduto: p.CODIGO,
-                  descricao: p.DESCRICAO,
-                }).onDuplicateKeyUpdate({ set: { codigoProduto: p.CODIGO } });
+              const database = await getDb();
+              if (database) {
+                for (const c of cadastrosFaltantes.novosClientes) {
+                  await database.insert(clientes).values({
+                    codigoCliente: c.CODIGO,
+                    nome: c.NOME,
+                    tipoCliente: c.TIPO || 'consumidor_final',
+                  }).onDuplicateKeyUpdate({ set: { codigoCliente: c.CODIGO } });
+                }
+                
+                for (const v of cadastrosFaltantes.novosVendedores) {
+                  await database.insert(vendedores).values({
+                    codigoVendedor: v.CODIGO,
+                    nome: v.NOME,
+                  }).onDuplicateKeyUpdate({ set: { codigoVendedor: v.CODIGO } });
+                }
+                
+                for (const p of cadastrosFaltantes.novosProdutos) {
+                  await database.insert(produtos).values({
+                    codigoProduto: p.CODIGO,
+                    descricao: p.DESCRICAO,
+                  }).onDuplicateKeyUpdate({ set: { codigoProduto: p.CODIGO } });
+                }
               }
             }
           }
