@@ -36,3 +36,7 @@
 - [x] Adicionar endpoint para buscar período real dos dados
 - [x] Atualizar dashboard para exibir período correto
 - [x] Adicionar filtro de período funcional (exibindo período real dos dados)
+
+## 🧹 Limpeza de Dados
+- [x] Limpar todas as tabelas do banco de dados
+- [x] Verificar que dashboard está vazio
