@@ -53,3 +53,9 @@
 - [x] 4. Upload via WebSocket (socket.io)
 - [x] 7. Save Points no backend (db.logs_uploads)
 - [x] 8. Análise de Ambiente (detectar bloqueadores via navigator.plugins)
+
+## 🔌 Integração REAL das Soluções
+- [x] Integrar uploadCamadas aos endpoints tRPC
+- [x] Integrar uploadWebSocket ao servidor HTTP
+- [x] Usar detectarBloqueadores na página Upload
+- [x] Testar que tudo funciona DE VERDADE

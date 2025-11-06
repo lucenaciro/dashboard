@@ -11,8 +11,29 @@ import { processarUpload } from "./process-upload";
 import { validarDados, validarIntegridadeAvancada, criarCadastrosFaltantes, schemas } from "./validators";
 import { logger } from "./logger";
 import { processarArquivoInteligente } from "./polarsProcessor";
+import { criarJobUpload, consultarJobUpload } from "./uploadCamadas";
 
 export const appRouter = router({
+  uploadCamadas: router({
+    criar: publicProcedure
+      .input(z.object({
+        arquivos: z.array(z.object({
+          name: z.string(),
+          content: z.string(),
+        })),
+      }))
+      .mutation(async ({ input }) => {
+        const jobId = await criarJobUpload(input.arquivos);
+        return { jobId, mensagem: 'Upload iniciado em camadas' };
+      }),
+    consultar: publicProcedure
+      .input(z.object({ jobId: z.string() }))
+      .query(({ input }) => {
+        const job = consultarJobUpload(input.jobId);
+        if (!job) throw new Error('Job não encontrado');
+        return job;
+      }),
+  }),
   periodo: router({
     obter: publicProcedure.query(async () => {
       const database = await getDb();

@@ -1,15 +1,38 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Upload as UploadIcon, ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { detectarBloqueadores, healthCheckUpload, exibirAlertaBloqueadores } from '@/lib/detectarBloqueadores';
 
 export default function Upload() {
   const [, setLocation] = useLocation();
   const [files, setFiles] = useState<FileList | null>(null);
   const [processando, setProcessando] = useState(false);
   const [message, setMessage] = useState('');
+  const [ambienteChecked, setAmbienteChecked] = useState(false);
+
+  // Solução 8: Análise de Ambiente ao montar componente
+  useEffect(() => {
+    const checkAmbiente = async () => {
+      const ambiente = detectarBloqueadores();
+      
+      if (ambiente.temBloqueadores) {
+        exibirAlertaBloqueadores(ambiente);
+        toast.warning('Bloqueadores detectados. Recomendamos usar a página /importar');
+      }
+      
+      const health = await healthCheckUpload();
+      if (!health.ok) {
+        toast.error(health.mensagem);
+      }
+      
+      setAmbienteChecked(true);
+    };
+    
+    checkAmbiente();
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFiles(e.target.files);
