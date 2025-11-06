@@ -33,9 +33,15 @@ export default function Upload() {
     try {
       const arquivos = await Promise.all(
         Array.from(files).map(async (file) => {
-          const buffer = await file.arrayBuffer();
-          const base64 = Buffer.from(buffer).toString('base64');
-          return { nome: file.name, base64 };
+          return new Promise<{ nome: string; base64: string }>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const base64 = (reader.result as string).split(',')[1];
+              resolve({ nome: file.name, base64 });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
         })
       );
 

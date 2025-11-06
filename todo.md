@@ -21,3 +21,8 @@
 - [x] Inserir dados no banco
 - [x] Redirecionar para dashboard após sucesso
 - [ ] TESTAR e garantir que funciona
+
+## CORREÇÃO URGENTE - Buffer is not defined
+- [x] Corrigir erro "Buffer is not defined" no frontend
+- [x] Usar FileReader API em vez de Buffer para converter para base64
+- [ ] Testar upload novamente
