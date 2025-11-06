@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, Users, Package, Warehouse, TrendingUp, FileText, Target, Award, Activity } from "lucide-react";
@@ -25,8 +26,14 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-foreground">Dashboard Analítico</h1>
-              <p className="text-muted-foreground mt-1">Palácio das Baterias - Análise Completa de Vendas</p>
-            </div>
+              <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">Palácio das Baterias - Análise Completa de Vendas</p>
+          <Link href="/upload">
+            <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium">
+              📄 Upload de Arquivos
+            </button>
+          </Link>
+        </div>          </div>
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Período</p>

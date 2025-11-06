@@ -73,3 +73,15 @@
 
 ## Correções de Bugs
 - [x] Corrigir erro na query de evolução mensal (DATE_FORMAT não suportado pelo Drizzle)
+
+## Sistema de Upload de Arquivos (NOVA FUNCIONALIDADE CRÍTICA)
+- [x] Criar tabela de uploads no banco de dados (histórico de processamento)
+- [ ] Criar endpoint tRPC para upload de arquivos (backend)
+- [ ] Implementar parser de CSV/Excel para cada tipo de arquivo (backend)
+- [x] Criar interface de upload com instruções claras
+- [x] Implementar validação de formato e estrutura dos arquivos (frontend)
+- [ ] Criar sistema de processamento em background (backend)
+- [ ] Implementar opção de substituir ou adicionar dados (backend)
+- [x] Criar tela de histórico de uploads (frontend)
+- [x] Adicionar feedback visual de progresso de upload
+- [ ] Implementar tratamento de erros e relatório de inconsistências (backend)

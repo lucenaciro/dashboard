@@ -113,6 +113,26 @@ export type Estoque = typeof estoque.$inferSelect;
 export type InsertEstoque = typeof estoque.$inferInsert;
 
 /**
+ * Tabela para rastrear uploads de arquivos e processamento de dados
+ */
+export const uploads = mysqlTable("uploads", {
+  id: int("id").autoincrement().primaryKey(),
+  nomeArquivo: varchar("nomeArquivo", { length: 255 }).notNull(),
+  tipoArquivo: mysqlEnum("tipoArquivo", ["clientes", "vendedores", "produtos", "movimentacoes", "estoque"]).notNull(),
+  tamanhoBytes: int("tamanhoBytes").notNull(),
+  status: mysqlEnum("status", ["processando", "concluido", "erro"]).notNull().default("processando"),
+  registrosProcessados: int("registrosProcessados").default(0),
+  registrosComErro: int("registrosComErro").default(0),
+  mensagemErro: text("mensagemErro"),
+  dataUpload: timestamp("dataUpload").defaultNow().notNull(),
+  dataProcessamento: timestamp("dataProcessamento"),
+  usuarioId: int("usuarioId").references(() => users.id),
+});
+
+export type Upload = typeof uploads.$inferSelect;
+export type InsertUpload = typeof uploads.$inferInsert;
+
+/**
  * Tabela de sell-out (vendas dos revendedores)
  */
 export const sellOut = mysqlTable("sellOut", {
