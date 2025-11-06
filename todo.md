@@ -59,3 +59,8 @@
 - [x] Integrar uploadWebSocket ao servidor HTTP
 - [x] Usar detectarBloqueadores na página Upload
 - [x] Testar que tudo funciona DE VERDADE
+
+## ⚠️ FALTANDO (conforme documento):
+- [x] Solução 6: Código EXATO - mutation.mutate com onSuccess/onError
+- [x] Solução 5: Adicionar opção "Tive erro no upload -> ir para copiar/colar"
+- [ ] Verificar que TODAS as 8 soluções estão EXATAMENTE como no documento
