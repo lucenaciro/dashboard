@@ -336,14 +336,41 @@ export async function getEvolucaoMensal(meses: number = 12) {
   const db = await getDb();
   if (!db) return [];
 
-  return await db.select({
-    mes: sql<string>`DATE_FORMAT(${movimentacoes.data}, '%Y-%m')`,
-    totalVendas: count(),
-    valorTotal: sql<number>`SUM(${movimentacoes.valorTotal})`,
-    ticketMedio: sql<number>`AVG(${movimentacoes.valorTotal})`,
+  // Buscar todas as movimentações e agrupar no JavaScript
+  const todasMovimentacoes = await db.select({
+    data: movimentacoes.data,
+    valorTotal: movimentacoes.valorTotal,
   })
     .from(movimentacoes)
-    .groupBy(sql`DATE_FORMAT(${movimentacoes.data}, '%Y-%m')`)
-    .orderBy(sql`DATE_FORMAT(${movimentacoes.data}, '%Y-%m')`)
-    .limit(meses);
+    .orderBy(movimentacoes.data);
+
+  // Agrupar por mês no JavaScript
+  const porMes = new Map<string, { totalVendas: number; valorTotal: number; valores: number[] }>();
+  
+  for (const mov of todasMovimentacoes) {
+    const data = new Date(mov.data);
+    const mesAno = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+    
+    if (!porMes.has(mesAno)) {
+      porMes.set(mesAno, { totalVendas: 0, valorTotal: 0, valores: [] });
+    }
+    
+    const grupo = porMes.get(mesAno)!;
+    grupo.totalVendas++;
+    grupo.valorTotal += mov.valorTotal;
+    grupo.valores.push(mov.valorTotal);
+  }
+
+  // Converter para array e ordenar
+  const resultado = Array.from(porMes.entries())
+    .map(([mes, dados]) => ({
+      mes,
+      totalVendas: dados.totalVendas,
+      valorTotal: dados.valorTotal,
+      ticketMedio: dados.totalVendas > 0 ? Math.round(dados.valorTotal / dados.totalVendas) : 0,
+    }))
+    .sort((a, b) => b.mes.localeCompare(a.mes))
+    .slice(0, meses);
+
+  return resultado;
 }

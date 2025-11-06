@@ -70,3 +70,6 @@
 - [ ] Ajustar responsividade para diferentes resoluções
 - [ ] Criar documentação de uso do dashboard
 - [ ] Salvar checkpoint final
+
+## Correções de Bugs
+- [x] Corrigir erro na query de evolução mensal (DATE_FORMAT não suportado pelo Drizzle)
