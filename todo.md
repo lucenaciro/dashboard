@@ -90,3 +90,10 @@
 - [x] Limpar todas as tabelas do banco de dados (preparar para upload real)
 - [x] Corrigir formatação de valores monetários (dividir por 100)
 - [ ] Testar upload de arquivos reais
+
+## Backend de Upload (URGENTE)
+- [x] Criar endpoint tRPC para receber arquivos
+- [x] Implementar parser de CSV/Excel
+- [x] Processar e inserir dados no banco
+- [x] Adicionar feedback de progresso
+- [x] Redirecionar para dashboard após processar

@@ -4,8 +4,21 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
+import { processarArquivo } from "./upload-processor";
 
 export const appRouter = router({
+  upload: router({
+    processar: publicProcedure
+      .input(z.object({
+        tipoArquivo: z.enum(['clientes', 'vendedores', 'produtos', 'movimentacoes', 'estoque']),
+        fileBase64: z.string(),
+        nomeArquivo: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const fileBuffer = Buffer.from(input.fileBase64, 'base64');
+        return await processarArquivo(input.tipoArquivo, fileBuffer, input.nomeArquivo);
+      }),
+  }),
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),

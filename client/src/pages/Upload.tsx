@@ -1,12 +1,16 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Upload as UploadIcon, FileSpreadsheet, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
 export default function Upload() {
+  const [, setLocation] = useLocation();
   const [uploading, setUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const processar = trpc.upload.processar.useMutation();
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, tipo: string) => {
     const file = event.target.files?.[0];
@@ -15,13 +19,38 @@ export default function Upload() {
     setUploading(true);
     
     try {
-      // Simular upload (aqui você implementaria o upload real via tRPC)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      setUploadedFiles(prev => [...prev, `${tipo}: ${file.name}`]);
-      toast.success(`Arquivo ${file.name} enviado com sucesso!`);
+      // Ler arquivo como base64
+      const reader = new FileReader();
+      const fileBase64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const base64 = reader.result as string;
+          resolve(base64.split(',')[1]); // Remover prefixo data:...
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Processar arquivo via tRPC
+      const result = await processar.mutateAsync({
+        tipoArquivo: tipo as any,
+        fileBase64,
+        nomeArquivo: file.name,
+      });
+
+      if (result.success) {
+        setUploadedFiles(prev => [...prev, `${tipo}: ${file.name} (${result.recordsProcessed} registros)`]);
+        toast.success(result.message);
+        
+        // Redirecionar para o dashboard após 2 segundos
+        setTimeout(() => {
+          setLocation('/');
+        }, 2000);
+      } else {
+        toast.error(result.message);
+      }
     } catch (error) {
-      toast.error("Erro ao enviar arquivo");
+      toast.error("Erro ao processar arquivo");
+      console.error(error);
     } finally {
       setUploading(false);
     }
