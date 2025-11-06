@@ -14,3 +14,10 @@
 - [x] Aba Produtos
 - [x] Aba Positivação
 - [x] Exportação PDF
+
+## URGENTE - Implementar processamento AGORA
+- [x] Criar endpoint tRPC upload.processar
+- [x] Processar os 5 CSVs enviados pelo usuário
+- [x] Inserir dados no banco
+- [x] Redirecionar para dashboard após sucesso
+- [ ] TESTAR e garantir que funciona
