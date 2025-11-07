@@ -97,3 +97,15 @@
 - [x] Permitir até 8 arquivos simultâneos
 - [x] Adicionar ícones de tipo de arquivo (CSV, XLSX)
 - [x] Mostrar tamanho dos arquivos em KB
+
+## 🔴 PROBLEMA CRÍTICO: Timeout no Upload
+- [x] Arquivos são detectados (drag & drop funciona)
+- [x] Preview mostra 5 arquivos corretamente
+- [x] Ao clicar "Enviar Arquivos" → TIMEOUT 60s
+- [x] Servidor NÃO responde (backend não processa ou não retorna)
+- [x] Analisar backend com Gemini
+- [x] Revisar routers.ts linha por linha
+- [x] Verificar logs do servidor ("Error: No values to set")
+- [x] Problema identificado: Parsing CSV incompleto (só pegava código, faltava nome/descrição)
+- [x] Correção aplicada: Parsear TODOS os campos do CSV
+- [ ] Testar upload completo

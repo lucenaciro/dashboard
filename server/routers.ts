@@ -193,18 +193,28 @@ export const appRouter = router({
         if (input.movimentacoes) {
           // VALIDAÇÃO DE INTEGRIDADE REFERENCIAL
           const dadosParsed = {
-            clientes: input.clientes ? input.clientes.split('\n').slice(1).map(l => {
+            clientes: input.clientes ? input.clientes.split('\n').slice(1).filter(l => l.trim()).map(l => {
               const vals = l.split(';');
-              return { CODIGO: vals[0] };
-            }) : [],
-            vendedores: input.vendedores ? input.vendedores.split('\n').slice(1).map(l => {
+              return { 
+                CODIGO: vals[0]?.trim(),
+                NOME: vals[1]?.trim(),
+                TIPO: vals[4]?.trim() || 'consumidor_final'
+              };
+            }).filter(c => c.CODIGO) : [],
+            vendedores: input.vendedores ? input.vendedores.split('\n').slice(1).filter(l => l.trim()).map(l => {
               const vals = l.split(';');
-              return { CODIGO: vals[0] };
-            }) : [],
-            produtos: input.produtos ? input.produtos.split('\n').slice(1).map(l => {
+              return { 
+                CODIGO: vals[0]?.trim(),
+                NOME: vals[1]?.trim()
+              };
+            }).filter(v => v.CODIGO) : [],
+            produtos: input.produtos ? input.produtos.split('\n').slice(1).filter(l => l.trim()).map(l => {
               const vals = l.split(';');
-              return { CODIGO: vals[0] };
-            }) : [],
+              return { 
+                CODIGO: vals[0]?.trim(), 
+                DESCRICAO: vals[1]?.trim() 
+              };
+            }).filter(p => p.CODIGO) : [],
             movimentacoes: input.movimentacoes.split('\n').slice(1).map(l => {
               const vals = l.split(';');
               return {
@@ -245,10 +255,20 @@ export const appRouter = router({
                 }
                 
                 for (const p of cadastrosFaltantes.novosProdutos) {
-                  await database.insert(produtos).values({
-                    codigoProduto: p.CODIGO,
-                    descricao: p.DESCRICAO,
-                  }).onDuplicateKeyUpdate({ set: { codigoProduto: p.CODIGO } });
+                  // Verificar se tem valores antes de inserir
+                  if (p.CODIGO && p.DESCRICAO) {
+                    try {
+                      await database.insert(produtos).values({
+                        codigoProduto: p.CODIGO,
+                        descricao: p.DESCRICAO,
+                      }).onDuplicateKeyUpdate({ set: { codigoProduto: p.CODIGO } });
+                      logger.info(`Produto criado: ${p.CODIGO}`);
+                    } catch (error) {
+                      logger.error(`Erro ao inserir produto ${p.CODIGO}:`, error);
+                    }
+                  } else {
+                    logger.warn(`Produto inválido (sem código ou descrição):`, p);
+                  }
                 }
               }
             }
