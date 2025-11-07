@@ -126,13 +126,13 @@ export const appRouter = router({
 
             try {
               await db.insert(clientes).values({
-                codigoCliente: row['CODIGO'] || '',
-                nome: row['NOME'] || '',
+                codigoCliente: row['Código do Cliente'] || row['CODIGO'] || '',
+                nome: row['Nome'] || row['NOME'] || '',
                 cnpj: row['CNPJ'] || null,
-                municipio: row['CIDADE'] || null,
-                estado: row['ESTADO'] || null,
+                municipio: row['Município'] || row['CIDADE'] || null,
+                estado: row['Estado'] || row['ESTADO'] || null,
                 tipoCliente: (row['TIPO'] || 'revendedor') as 'loja_propria' | 'revendedor' | 'consumidor_final',
-              }).onDuplicateKeyUpdate({ set: { codigoCliente: row['CODIGO'] } });
+              }).onDuplicateKeyUpdate({ set: { codigoCliente: row['Código do Cliente'] || row['CODIGO'] } });
               totalProcessado++;
             } catch (e) {
               logger.error('Erro ao inserir cliente', { linha: i + 1, erro: e });
@@ -155,9 +155,9 @@ export const appRouter = router({
 
             try {
               await db.insert(vendedores).values({
-                codigoVendedor: row['CODIGO'] || '',
-                nome: row['NOME'] || '',
-              }).onDuplicateKeyUpdate({ set: { codigoVendedor: row['CODIGO'] } });
+                codigoVendedor: row['Código Vendedor'] || row['CODIGO'] || '',
+                nome: row['Nome'] || row['NOME'] || '',
+              }).onDuplicateKeyUpdate({ set: { codigoVendedor: row['Código Vendedor'] || row['CODIGO'] } });
               totalProcessado++;
             } catch (e) {
               console.error('Erro ao inserir vendedor:', e);
@@ -179,9 +179,9 @@ export const appRouter = router({
 
             try {
               await db.insert(produtos).values({
-                codigoProduto: row['CODIGO'] || '',
-                descricao: row['DESCRICAO'] || '',
-              }).onDuplicateKeyUpdate({ set: { codigoProduto: row['CODIGO'] } });
+                codigoProduto: row['Código Produto'] || row['CODIGO'] || '',
+                descricao: row['Descrição'] || row['DESCRICAO'] || '',
+              }).onDuplicateKeyUpdate({ set: { codigoProduto: row['Código Produto'] || row['CODIGO'] } });
               totalProcessado++;
             } catch (e) {
               console.error('Erro ao inserir produto:', e);
@@ -299,12 +299,12 @@ export const appRouter = router({
               };
 
               await db.insert(movimentacoes).values({
-                codigoCliente: row['CODIGO_CLIENTE'] || '',
-                codigoVendedor: row['CODIGO_VENDEDOR'] || '',
-                codigoProduto: row['CODIGO_PRODUTO'] || '',
-                data: parseData(row['DATA_PEDIDO']) || new Date(),
-                quantidade: parseInt(row['QUANTIDADE'] || '0'),
-                valorTotal: parseValor(row['VALOR_TOTAL'] || '0'),
+                codigoCliente: row['Código Cliente'] || row['CODIGO_CLIENTE'] || '',
+                codigoVendedor: row['Código Vendedor'] || row['CODIGO_VENDEDOR'] || '',
+                codigoProduto: row['Código Produto'] || row['CODIGO_PRODUTO'] || '',
+                data: parseData(row['Data'] || row['DATA_PEDIDO'] || row['DATA']) || new Date(),
+                quantidade: parseInt(row['Quantidade'] || row['QUANTIDADE'] || '0'),
+                valorTotal: parseValor(row['Valor Total'] || row['VALOR_TOTAL'] || '0'),
               });
               totalProcessado++;
             } catch (e) {
@@ -336,10 +336,10 @@ export const appRouter = router({
               };
 
               await db.insert(estoque).values({
-                codigoProduto: row['CODIGO_PRODUTO'] || '',
-                quantidade: parseInt(row['QUANTIDADE'] || '0'),
-                dataEstoque: parseData(row['DATA_ESTOQUE']) || new Date(),
-                distribuidor: row['DISTRIBUIDOR'] || null,
+                codigoProduto: row['Código Produto'] || row['CODIGO_PRODUTO'] || '',
+                quantidade: parseInt(row['Quantidade'] || row['QUANTIDADE'] || '0'),
+                dataEstoque: parseData(row['Data'] || row['DATA_ESTOQUE'] || row['DATA']) || new Date(),
+                distribuidor: row['Distribuidor'] || row['DISTRIBUIDOR'] || null,
               });
               totalProcessado++;
             } catch (e) {

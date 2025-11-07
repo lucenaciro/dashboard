@@ -109,3 +109,10 @@
 - [x] Problema identificado: Parsing CSV incompleto (só pegava código, faltava nome/descrição)
 - [x] Correção aplicada: Parsear TODOS os campos do CSV
 - [ ] Testar upload completo
+
+## 🔴 PROBLEMAS CRÍTICOS - Parsing CSV
+- [ ] Valores monetários zerados (R$ 0,00) - parsing de vírgula decimal falhando
+- [ ] Duplicação de registros (14.982 transações vs 8.939 esperadas)
+- [ ] Cliente #4 com 14.978 vendas e R$ 0,00 - mapeamento incorreto
+- [ ] Códigos não estão sendo mapeados corretamente entre tabelas
+- [ ] Ticket médio R$ 0,62 incorreto (deveria ser ~R$ 1,03)
