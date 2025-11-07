@@ -13,6 +13,63 @@ import { logger } from "./logger";
 import { processarArquivoInteligente } from "./polarsProcessor";
 import { criarJobUpload, consultarJobUpload } from "./uploadCamadas";
 
+const cleanCsvValue = (value?: string): string => {
+  if (value === undefined || value === null) return "";
+  return value.replace(/\uFEFF/g, "").replace(/"/g, "").replace(/\r/g, "").trim();
+};
+
+const parseDataCsv = (dataStr: string | null | undefined): Date | null => {
+  const limpo = cleanCsvValue(dataStr ?? "");
+  if (!limpo) return null;
+
+  const partes = limpo.split("/");
+  if (partes.length === 3) {
+    const [dia, mes, ano] = partes;
+    const parsed = new Date(Number(ano), Number(mes) - 1, Number(dia));
+    if (!isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  const data = new Date(limpo);
+  return isNaN(data.getTime()) ? null : data;
+};
+
+const parseDecimal = (valorStr: string | null | undefined): number => {
+  const limpo = cleanCsvValue(valorStr ?? "");
+  if (!limpo) return 0;
+
+  const semSeparadorMilhar = limpo.replace(/\./g, "");
+  const normalizado = semSeparadorMilhar.replace(/,/g, ".");
+  const valor = parseFloat(normalizado);
+  return isNaN(valor) ? 0 : valor;
+};
+
+const parseQuantidade = (valorStr: string | null | undefined): number => {
+  const valor = parseDecimal(valorStr);
+  return Math.round(valor);
+};
+
+const parseValor = (valorStr: string | null | undefined): number => {
+  const valor = parseDecimal(valorStr);
+  return Math.round(valor * 100);
+};
+
+const validarCamposObrigatorios = (obj: Record<string, any>, campos: string[]): boolean => {
+  return campos.every(campo => {
+    const valor = obj[campo];
+    return valor !== undefined && valor !== null && valor !== "";
+  });
+};
+
+const assignRowValue = (row: Record<string, string>, header: string, value?: string) => {
+  const normalizedHeader = cleanCsvValue(header);
+  const cleanedValue = cleanCsvValue(value ?? "");
+  row[normalizedHeader] = cleanedValue;
+  row[normalizedHeader.toUpperCase()] = cleanedValue;
+  row[normalizedHeader.replace(/\s+/g, '_').toUpperCase()] = cleanedValue;
+};
+
 export const appRouter = router({
   uploadCamadas: router({
     criar: publicProcedure
@@ -101,7 +158,7 @@ export const appRouter = router({
             const valores = linha.split(';');
             const row: Record<string, string> = {};
             headers.forEach((h, idx) => {
-              row[h.trim()] = valores[idx]?.trim() || '';
+              assignRowValue(row, h, valores[idx]);
             });
             return row;
           });
@@ -124,15 +181,46 @@ export const appRouter = router({
               continue;
             }
 
+            const clienteData = {
+              codigoCliente: row['Código do Cliente'] || row['Código Cliente'] || row['CODIGO_CLIENTE'] || row['CODIGO'] || '',
+              nome: row['Nome'] || row['NOME'] || '',
+              cnpj: row['CNPJ'] || row['Cnpj'] || null,
+              endereco: row['Endereço'] || row['Endereco'] || row['ENDERECO'] || null,
+              bairro: row['Bairro'] || row['BAIRRO'] || null,
+              municipio: row['Município'] || row['Municipio'] || row['CIDADE'] || null,
+              estado: row['Estado'] || row['ESTADO'] || null,
+              cep: row['CEP'] || row['Cep'] || null,
+              email: row['E-mail'] || row['Email'] || row['EMAIL'] || null,
+              telefone: row['Telefone'] || row['TELEFONE'] || null,
+              inscricaoEstadual: row['Inscrição Estadual'] || row['Inscricao Estadual'] || row['INSCRICAO_ESTADUAL'] || null,
+              tipoCliente: (row['Tipo Cliente'] || row['TIPO'] || 'revendedor') as 'loja_propria' | 'revendedor' | 'consumidor_final',
+            };
+
+            if (!validarCamposObrigatorios(clienteData, ['codigoCliente', 'nome'])) {
+              totalErros++;
+              logger.warn('Linha de cliente ignorada por campos obrigatórios ausentes', { linha: i + 1, row });
+              continue;
+            }
+
             try {
-              await db.insert(clientes).values({
-                codigoCliente: row['Código do Cliente'] || row['CODIGO'] || '',
-                nome: row['Nome'] || row['NOME'] || '',
-                cnpj: row['CNPJ'] || null,
-                municipio: row['Município'] || row['CIDADE'] || null,
-                estado: row['Estado'] || row['ESTADO'] || null,
-                tipoCliente: (row['TIPO'] || 'revendedor') as 'loja_propria' | 'revendedor' | 'consumidor_final',
-              }).onDuplicateKeyUpdate({ set: { codigoCliente: row['Código do Cliente'] || row['CODIGO'] } });
+              await db
+                .insert(clientes)
+                .values(clienteData)
+                .onDuplicateKeyUpdate({
+                  set: {
+                    nome: clienteData.nome,
+                    cnpj: clienteData.cnpj,
+                    municipio: clienteData.municipio,
+                    estado: clienteData.estado,
+                    endereco: clienteData.endereco,
+                    bairro: clienteData.bairro,
+                    cep: clienteData.cep,
+                    email: clienteData.email,
+                    telefone: clienteData.telefone,
+                    inscricaoEstadual: clienteData.inscricaoEstadual,
+                    tipoCliente: clienteData.tipoCliente,
+                  },
+                });
               totalProcessado++;
             } catch (e) {
               logger.error('Erro ao inserir cliente', { linha: i + 1, erro: e });
@@ -150,17 +238,41 @@ export const appRouter = router({
             const valores = linhas[i].split(';');
             const row: Record<string, string> = {};
             headers.forEach((h, idx) => {
-              row[h.trim()] = valores[idx]?.trim() || '';
+              assignRowValue(row, h, valores[idx]);
             });
 
+            const vendedorData = {
+              codigoVendedor:
+                row['Código Vendedor'] ||
+                row['Codigo Vendedor'] ||
+                row['Código do Vendedor'] ||
+                row['CODIGO_VENDEDOR'] ||
+                row['CODIGO'] ||
+                '',
+              nome: row['Nome'] || row['NOME'] || '',
+              ativo: true,
+            };
+
+            if (!validarCamposObrigatorios(vendedorData, ['codigoVendedor', 'nome'])) {
+              totalErros++;
+              logger.warn('Linha de vendedor ignorada por campos obrigatórios ausentes', { linha: i + 1, row });
+              continue;
+            }
+
             try {
-              await db.insert(vendedores).values({
-                codigoVendedor: row['Código Vendedor'] || row['CODIGO'] || '',
-                nome: row['Nome'] || row['NOME'] || '',
-              }).onDuplicateKeyUpdate({ set: { codigoVendedor: row['Código Vendedor'] || row['CODIGO'] } });
+              await db
+                .insert(vendedores)
+                .values(vendedorData)
+                .onDuplicateKeyUpdate({
+                  set: {
+                    nome: vendedorData.nome,
+                    ativo: vendedorData.ativo,
+                  },
+                });
               totalProcessado++;
             } catch (e) {
-              console.error('Erro ao inserir vendedor:', e);
+              logger.error('Erro ao inserir vendedor', { linha: i + 1, erro: e });
+              totalErros++;
             }
           }
         }
@@ -174,17 +286,38 @@ export const appRouter = router({
             const valores = linhas[i].split(';');
             const row: Record<string, string> = {};
             headers.forEach((h, idx) => {
-              row[h.trim()] = valores[idx]?.trim() || '';
+              assignRowValue(row, h, valores[idx]);
             });
 
+            const produtoData = {
+              codigoProduto:
+                row['Código Produto'] ||
+                row['Codigo Produto'] ||
+                row['CODIGO_PRODUTO'] ||
+                row['CODIGO'] ||
+                '',
+              descricao: row['Descrição'] || row['Descricao'] || row['DESCRICAO'] || '',
+            };
+
+            if (!validarCamposObrigatorios(produtoData, ['codigoProduto', 'descricao'])) {
+              totalErros++;
+              logger.warn('Linha de produto ignorada por campos obrigatórios ausentes', { linha: i + 1, row });
+              continue;
+            }
+
             try {
-              await db.insert(produtos).values({
-                codigoProduto: row['Código Produto'] || row['CODIGO'] || '',
-                descricao: row['Descrição'] || row['DESCRICAO'] || '',
-              }).onDuplicateKeyUpdate({ set: { codigoProduto: row['Código Produto'] || row['CODIGO'] } });
+              await db
+                .insert(produtos)
+                .values(produtoData)
+                .onDuplicateKeyUpdate({
+                  set: {
+                    descricao: produtoData.descricao,
+                  },
+                });
               totalProcessado++;
             } catch (e) {
-              console.error('Erro ao inserir produto:', e);
+              logger.error('Erro ao inserir produto', { linha: i + 1, erro: e });
+              totalErros++;
             }
           }
         }
@@ -193,34 +326,55 @@ export const appRouter = router({
         if (input.movimentacoes) {
           // VALIDAÇÃO DE INTEGRIDADE REFERENCIAL
           const dadosParsed = {
-            clientes: input.clientes ? input.clientes.split('\n').slice(1).filter(l => l.trim()).map(l => {
-              const vals = l.split(';');
-              return { 
-                CODIGO: vals[0]?.trim(),
-                NOME: vals[1]?.trim(),
-                TIPO: vals[4]?.trim() || 'consumidor_final'
-              };
-            }).filter(c => c.CODIGO) : [],
-            vendedores: input.vendedores ? input.vendedores.split('\n').slice(1).filter(l => l.trim()).map(l => {
-              const vals = l.split(';');
-              return { 
-                CODIGO: vals[0]?.trim(),
-                NOME: vals[1]?.trim()
-              };
-            }).filter(v => v.CODIGO) : [],
-            produtos: input.produtos ? input.produtos.split('\n').slice(1).filter(l => l.trim()).map(l => {
-              const vals = l.split(';');
-              return { 
-                CODIGO: vals[0]?.trim(), 
-                DESCRICAO: vals[1]?.trim() 
-              };
-            }).filter(p => p.CODIGO) : [],
+            clientes: input.clientes
+              ? input.clientes
+                  .split('\n')
+                  .slice(1)
+                  .filter(l => l.trim())
+                  .map(l => {
+                    const vals = l.split(';');
+                    return {
+                      CODIGO: cleanCsvValue(vals[0]),
+                      NOME: cleanCsvValue(vals[2] ?? vals[1]),
+                      TIPO: 'consumidor_final',
+                    };
+                  })
+                  .filter(c => c.CODIGO)
+              : [],
+            vendedores: input.vendedores
+              ? input.vendedores
+                  .split('\n')
+                  .slice(1)
+                  .filter(l => l.trim())
+                  .map(l => {
+                    const vals = l.split(';');
+                    return {
+                      CODIGO: cleanCsvValue(vals[0]),
+                      NOME: cleanCsvValue(vals[1]),
+                    };
+                  })
+                  .filter(v => v.CODIGO)
+              : [],
+            produtos: input.produtos
+              ? input.produtos
+                  .split('\n')
+                  .slice(1)
+                  .filter(l => l.trim())
+                  .map(l => {
+                    const vals = l.split(';');
+                    return {
+                      CODIGO: cleanCsvValue(vals[0]),
+                      DESCRICAO: cleanCsvValue(vals[1]),
+                    };
+                  })
+                  .filter(p => p.CODIGO)
+              : [],
             movimentacoes: input.movimentacoes.split('\n').slice(1).map(l => {
               const vals = l.split(';');
               return {
-                CODIGO_CLIENTE: vals[0],
-                CODIGO_VENDEDOR: vals[1],
-                CODIGO_PRODUTO: vals[2],
+                CODIGO_CLIENTE: cleanCsvValue(vals[4] ?? vals[0]),
+                CODIGO_VENDEDOR: cleanCsvValue(vals[2] ?? vals[1]),
+                CODIGO_PRODUTO: cleanCsvValue(vals[6] ?? vals[2]),
               };
             }),
           };
@@ -280,35 +434,67 @@ export const appRouter = router({
             const valores = linhas[i].split(';');
             const row: Record<string, string> = {};
             headers.forEach((h, idx) => {
-              row[h.trim()] = valores[idx]?.trim() || '';
+              assignRowValue(row, h, valores[idx]);
             });
 
+            const movimentoData = {
+              distribuidor: row['Distribuidor'] || row['DISTRIBUIDOR'] || null,
+              cnpjDistribuidor: row['CNPJ'] || row['CNPJ DISTRIBUIDOR'] || row['CNPJ_DISTRIBUIDOR'] || null,
+              codigoVendedor:
+                row['Código Vendedor'] ||
+                row['Codigo Vendedor'] ||
+                row['CODIGO_VENDEDOR'] ||
+                row['CODIGO VENDEDOR'] ||
+                null,
+              nomeVendedor: row['Nome Vendedor'] || row['NOME VENDEDOR'] || row['NOME_VENDEDOR'] || null,
+              codigoCliente:
+                row['Código Cliente'] ||
+                row['Código do Cliente'] ||
+                row['Codigo Cliente'] ||
+                row['CODIGO_CLIENTE'] ||
+                '',
+              nomeCliente: row['Nome Cliente'] || row['NOME CLIENTE'] || row['NOME_CLIENTE'] || null,
+              codigoProduto:
+                row['Código Produto'] ||
+                row['Codigo Produto'] ||
+                row['CODIGO_PRODUTO'] ||
+                '',
+              nomeProduto: row['Nome Produto'] || row['NOME PRODUTO'] || row['NOME_PRODUTO'] || null,
+              quantidade: parseQuantidade(row['Quantidade'] || row['QUANTIDADE'] || row['Qtd'] || row['QTD']),
+              valorTotal: parseValor(row['Valor Total'] || row['VALOR_TOTAL'] || row['Valor'] || row['VALOR']),
+              data: parseDataCsv(row['Data'] || row['DATA_PEDIDO'] || row['DATA']),
+              numeroNota: row['Número Nota'] || row['Numero Nota'] || row['NUMERO_NOTA'] || row['Nota Fiscal'] || null,
+              tipoSaida: row['Tipo de Saída'] || row['Tipo Saída'] || row['TIPO_SAIDA'] || null,
+              descricaoSaida: row['Descrição Saída'] || row['Descricao Saida'] || row['DESCRICAO_SAIDA'] || null,
+            };
+
+            if (!validarCamposObrigatorios(movimentoData, ['codigoCliente', 'codigoProduto', 'data'])) {
+              totalErros++;
+              logger.warn('Linha de movimentação ignorada por campos obrigatórios ausentes', { linha: i + 1, row });
+              continue;
+            }
+
             try {
-              const parseData = (dataStr: string): Date | null => {
-                if (!dataStr) return null;
-                const partes = dataStr.split('/');
-                if (partes.length === 3) {
-                  return new Date(`${partes[2]}-${partes[1]}-${partes[0]}`);
-                }
-                return new Date(dataStr);
-              };
-
-              const parseValor = (valorStr: string): number => {
-                const valor = parseFloat(valorStr.replace(',', '.'));
-                return Math.round(valor * 100); // Converter para centavos
-              };
-
               await db.insert(movimentacoes).values({
-                codigoCliente: row['Código Cliente'] || row['CODIGO_CLIENTE'] || '',
-                codigoVendedor: row['Código Vendedor'] || row['CODIGO_VENDEDOR'] || '',
-                codigoProduto: row['Código Produto'] || row['CODIGO_PRODUTO'] || '',
-                data: parseData(row['Data'] || row['DATA_PEDIDO'] || row['DATA']) || new Date(),
-                quantidade: parseInt(row['Quantidade'] || row['QUANTIDADE'] || '0'),
-                valorTotal: parseValor(row['Valor Total'] || row['VALOR_TOTAL'] || '0'),
+                distribuidor: movimentoData.distribuidor,
+                cnpjDistribuidor: movimentoData.cnpjDistribuidor,
+                codigoVendedor: movimentoData.codigoVendedor,
+                nomeVendedor: movimentoData.nomeVendedor,
+                codigoCliente: movimentoData.codigoCliente,
+                nomeCliente: movimentoData.nomeCliente,
+                codigoProduto: movimentoData.codigoProduto,
+                nomeProduto: movimentoData.nomeProduto,
+                quantidade: movimentoData.quantidade,
+                valorTotal: movimentoData.valorTotal,
+                data: movimentoData.data!,
+                numeroNota: movimentoData.numeroNota,
+                tipoSaida: movimentoData.tipoSaida,
+                descricaoSaida: movimentoData.descricaoSaida,
               });
               totalProcessado++;
             } catch (e) {
-              console.error('Erro ao inserir movimentação:', e);
+              logger.error('Erro ao inserir movimentação', { linha: i + 1, erro: e, row });
+              totalErros++;
             }
           }
         }
@@ -317,33 +503,43 @@ export const appRouter = router({
         if (input.estoque) {
           const linhas = input.estoque.split('\n').filter(l => l.trim());
           const headers = linhas[0].split(';');
-          
+
           for (let i = 1; i < linhas.length; i++) {
             const valores = linhas[i].split(';');
             const row: Record<string, string> = {};
             headers.forEach((h, idx) => {
-              row[h.trim()] = valores[idx]?.trim() || '';
+              assignRowValue(row, h, valores[idx]);
             });
 
-            try {
-              const parseData = (dataStr: string): Date | null => {
-                if (!dataStr) return new Date();
-                const partes = dataStr.split('/');
-                if (partes.length === 3) {
-                  return new Date(`${partes[2]}-${partes[1]}-${partes[0]}`);
-                }
-                return new Date(dataStr);
-              };
+            const estoqueData = {
+              codigoProduto:
+                row['Código Produto'] ||
+                row['Codigo Produto'] ||
+                row['CODIGO_PRODUTO'] ||
+                row['CODIGO'] ||
+                '',
+              quantidade: parseQuantidade(row['Quantidade'] || row['QUANTIDADE']),
+              dataEstoque: parseDataCsv(row['Data'] || row['DATA_ESTOQUE'] || row['DATA']),
+              distribuidor: row['Distribuidor'] || row['DISTRIBUIDOR'] || null,
+            };
 
+            if (!validarCamposObrigatorios(estoqueData, ['codigoProduto', 'dataEstoque'])) {
+              totalErros++;
+              logger.warn('Linha de estoque ignorada por campos obrigatórios ausentes', { linha: i + 1, row });
+              continue;
+            }
+
+            try {
               await db.insert(estoque).values({
-                codigoProduto: row['Código Produto'] || row['CODIGO_PRODUTO'] || '',
-                quantidade: parseInt(row['Quantidade'] || row['QUANTIDADE'] || '0'),
-                dataEstoque: parseData(row['Data'] || row['DATA_ESTOQUE'] || row['DATA']) || new Date(),
-                distribuidor: row['Distribuidor'] || row['DISTRIBUIDOR'] || null,
+                codigoProduto: estoqueData.codigoProduto,
+                quantidade: estoqueData.quantidade,
+                dataEstoque: estoqueData.dataEstoque!,
+                distribuidor: estoqueData.distribuidor,
               });
               totalProcessado++;
             } catch (e) {
-              console.error('Erro ao inserir estoque:', e);
+              logger.error('Erro ao inserir estoque', { linha: i + 1, erro: e, row });
+              totalErros++;
             }
           }
         }
