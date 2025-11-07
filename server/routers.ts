@@ -35,7 +35,7 @@ export const appRouter = router({
   }),
   periodo: router({
     obter: publicProcedure.query(async () => {
-      const database = await getDb();
+      const database = await getDb({ role: "metrics" });
       if (!database) return { inicio: null, fim: null, ano: new Date().getFullYear() };
 
       try {
@@ -96,15 +96,16 @@ export const appRouter = router({
           throw new Error('Nenhum conteúdo CSV fornecido');
         }
 
-        const resultado = await processarUpload(arquivos, { dryRun: input.dryRun });
+        const { summary, details } = await processarUpload(arquivos, { dryRun: input.dryRun });
 
         return {
           sucesso: true,
-          totalProcessado: resultado.totals.inserted + resultado.totals.updated,
-          totalInserido: resultado.totals.inserted,
-          totalAtualizado: resultado.totals.updated,
-          totalPulos: resultado.totals.skipped,
-          resumo: resultado,
+          totalProcessado: summary.inserted + summary.updated,
+          totalInserido: summary.inserted,
+          totalAtualizado: summary.updated,
+          totalPulos: summary.skipped,
+          resumo: details,
+          summary,
         };
       }),
   }),
@@ -225,7 +226,7 @@ export const appRouter = router({
 
   ciclos: router({
     listar: publicProcedure.query(async () => {
-      const database = await getDb();
+      const database = await getDb({ role: "app" });
       if (!database) throw new Error('Database not available');
       const { ciclos } = await import('../drizzle/schema');
       return await database.select().from(ciclos).orderBy(ciclos.createdAt);
@@ -237,7 +238,7 @@ export const appRouter = router({
         descricao: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        const database = await getDb();
+        const database = await getDb({ role: "app" });
         if (!database) throw new Error('Database not available');
         const { ciclos } = await import('../drizzle/schema');
         

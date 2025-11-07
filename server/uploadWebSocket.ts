@@ -1,6 +1,7 @@
 import { Server as SocketIOServer } from 'socket.io';
 import type { Server as HTTPServer } from 'http';
 import { getDb } from './db';
+import { logger } from './logger';
 
 /**
  * Solução 4: Upload via WebSocket
@@ -19,11 +20,11 @@ export function setupWebSocketUpload(httpServer: HTTPServer) {
   });
 
   io.on('connection', (socket) => {
-    console.log('[WEBSOCKET] Cliente conectado:', socket.id);
+    logger.info('[WEBSOCKET] Cliente conectado', { socketId: socket.id });
 
     socket.on('upload:start', async (data: { totalFiles: number }) => {
-      console.log(`[WEBSOCKET] Iniciando upload de ${data.totalFiles} arquivos`);
-      
+      logger.info('[WEBSOCKET] Iniciando upload', { totalArquivos: data.totalFiles, socketId: socket.id });
+
       socket.emit('upload:ready', {
         uploadId: `ws_${Date.now()}_${socket.id.substr(0, 8)}`,
         message: 'Pronto para receber arquivos',
@@ -31,11 +32,16 @@ export function setupWebSocketUpload(httpServer: HTTPServer) {
     });
 
     socket.on('upload:file', async (data: { name: string; content: string; index: number; total: number }) => {
-      console.log(`[WEBSOCKET] Recebendo arquivo ${data.index + 1}/${data.total}: ${data.name}`);
-      
+      logger.info('[WEBSOCKET] Recebendo arquivo', {
+        socketId: socket.id,
+        arquivo: data.name,
+        indice: data.index + 1,
+        total: data.total,
+      });
+
       try {
         // Processar arquivo
-        const db = await getDb();
+        const db = await getDb({ role: 'importer' });
         if (!db) {
           socket.emit('upload:error', { message: 'Database not available' });
           return;
@@ -61,7 +67,7 @@ export function setupWebSocketUpload(httpServer: HTTPServer) {
           });
         }
       } catch (error: any) {
-        console.error('[WEBSOCKET] Erro ao processar arquivo:', error);
+        logger.error('[WEBSOCKET] Erro ao processar arquivo', { error, arquivo: data.name, socketId: socket.id });
         socket.emit('upload:error', {
           fileName: data.name,
           message: error.message,
@@ -70,11 +76,11 @@ export function setupWebSocketUpload(httpServer: HTTPServer) {
     });
 
     socket.on('disconnect', () => {
-      console.log('[WEBSOCKET] Cliente desconectado:', socket.id);
+      logger.info('[WEBSOCKET] Cliente desconectado', { socketId: socket.id });
     });
   });
 
-  console.log('[WEBSOCKET] Servidor WebSocket configurado');
-  
+  logger.info('[WEBSOCKET] Servidor WebSocket configurado');
+
   return io;
 }

@@ -23,11 +23,13 @@ curl -X POST \
 ```
 
 - `dryRun=true` validates and reports without writing.
-- Remove the query parameter to persist; the JSON response includes totals, inserted/updated counts, skipped rows, and warnings.
+- Remove the query parameter to persist; the JSON response includes a `summary` object
+  (`total`, `inserted`, `updated`, `skipped`, `topReasons`, `durationMs`) and a detailed
+  `details` payload with per-file errors/warnings.
 
 ## 2. Reprocess from the CLI
 
-Use the new helper script for local iteration:
+Use the helper script for local iteration (`pnpm tsx scripts/reprocess-import.ts`).
 
 ```bash
 # Dry-run with explicit CSV selection
@@ -43,13 +45,25 @@ pnpm tsx scripts/reprocess-import.ts \
   movimentacoes=./data/MOVIMENTO_DISTRIBUIDOR.csv
 ```
 
-The script prints the structured `ImportSummary` JSON and confirms whether rows were written.
+The script prints both the aggregated `summary` and raw `details` so you can diff totals vs per-file telemetry.
+
+### One-shot probe
+
+For end-to-end verification, run the pipeline probe:
+
+```bash
+npm run probe:csv "./path/to/file-or-directory"
+```
+
+The probe logs masked DB information, runs a dry-run and real import, shows SQL counts before/after,
+recomputes dashboard metrics, and ends with a PASS/FAIL verdict.
 
 ## 3. Observability & logs
 
-- Every processed file emits an info log: `Resumo do arquivo <nome>` with totals, inserted/updated, skips, and warnings.
+- Expect `db:connection` on startup (`app`, `metrics`, `importer` roles), one `import:file-summary` per CSV, a final
+  `csv:summary`, and (for real imports) `metrics:snapshot` with refreshed aggregates.
 - Dry-runs add the warning `Dry-run: nenhuma escrita realizada; totais representam operações previstas.`
-- Background uploads (`uploadCamadas`) now log via the shared logger with job identifiers.
+- Background uploads and WebSocket transfers now go through the shared logger—no raw `console.log` output remains.
 
 ## 4. Roll-forward / rollback checklist
 
