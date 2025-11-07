@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    env_file:
+      - .env.sandbox
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-sandbox}
+      MYSQL_DATABASE: ${DB_NAME:-sandbox}
+      MYSQL_USER: ${DB_USER:-sandbox}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-sandbox}
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - sandbox-mysql:/var/lib/mysql
+
+  app:
+    image: node:20
+    working_dir: /workspace/app
+    command: sh -c "corepack enable && pnpm install && pnpm run dev:sandbox"
+    volumes:
+      - .:/workspace/app
+    ports:
+      - "3000:3000"
+      - "9229:9229"
+    env_file:
+      - .env.sandbox
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: ${DATABASE_URL:-mysql://sandbox:sandbox@db:3306/sandbox}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  sandbox-mysql:

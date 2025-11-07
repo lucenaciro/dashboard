@@ -6,6 +6,7 @@
 
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
+import { logger as baseLogger, getCurrentLogFile } from '../src/shared/logger';
 
 export interface LogEntry {
   timestamp: string;
@@ -39,7 +40,7 @@ export interface ProcessingLog {
 class Logger {
   private logs: LogEntry[] = [];
   private processLogs: Map<string, ProcessingLog> = new Map();
-  private logDir: string = '/tmp/dashboard-logs';
+  private logDir: string = process.env.LOG_DIR ? path.resolve(process.cwd(), process.env.LOG_DIR) : '/tmp/dashboard-logs';
 
   constructor() {
     this.init();
@@ -79,9 +80,14 @@ class Logger {
 
     this.logs.push(entry);
     
-    // Console output
-    const prefix = `[${entry.timestamp}] [${nivel}]`;
-    console.log(`${prefix} ${mensagem}`, detalhes || '');
+    const meta = detalhes && typeof detalhes === 'object' ? detalhes : undefined;
+    if (nivel === 'ERROR') {
+      void baseLogger.error(mensagem, meta);
+    } else if (nivel === 'WARN') {
+      void baseLogger.warn(mensagem, meta);
+    } else {
+      void baseLogger.info(mensagem, meta);
+    }
   }
 
   /**
@@ -269,3 +275,4 @@ class Logger {
 
 // Singleton
 export const logger = new Logger();
+export const currentLogFile = getCurrentLogFile;

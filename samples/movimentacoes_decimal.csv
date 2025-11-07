@@ -1,0 +1,4 @@
+Município;Código Cliente;Nome Cliente;Código Produto;Nome Produto;Quantidade;Valor Total;Data;Número Nota;Venda com QR Code
+São Paulo;CLI-001;Loja São José;PROD-001;Bateria 60Ah;1.234;1.234,56;05/11/2024;NF-001;Sim
+;;;;;;;
+Curitiba;CLI-002;Oficina Ágil;PROD-002;Carregador portátil;2;987,65;06/11/2024;NF-002;Não
