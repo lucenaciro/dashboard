@@ -1,64 +1,12 @@
 import { createHash } from "node:crypto";
-import { HEADER_ALIAS_MAP, BOOLEAN_TRUE_VALUES, BOOLEAN_FALSE_VALUES } from "./constants";
+import { BOOLEAN_TRUE_VALUES, BOOLEAN_FALSE_VALUES } from "./constants";
+import { parseDatePtBR, parseMoneyPtBR } from "./parser";
 import { ImportFileType, NormalizedRow } from "./types";
-
-const NON_WORD_PATTERN = /[^a-z0-9]+/g;
 
 export const DATE_PATTERNS = [
   /^(\d{2})\/(\d{2})\/(\d{4})$/,
   /^(\d{2})-(\d{2})-(\d{4})$/,
 ];
-
-export function normalizeHeader(rawHeader: string): string {
-  const noBom = rawHeader.replace(/^\uFEFF/, "");
-  const normalized = noBom
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(NON_WORD_PATTERN, "_")
-    .replace(/^_+|_+$/g, "");
-  return normalized;
-}
-
-export function mapHeader(type: ImportFileType, rawHeader: string): string {
-  const normalized = normalizeHeader(rawHeader);
-  const aliasMap = HEADER_ALIAS_MAP[type];
-
-  for (const [target, aliases] of Object.entries(aliasMap)) {
-    if (target === normalized || aliases.includes(normalized)) {
-      return target;
-    }
-  }
-
-  return normalized;
-}
-
-export function normalizeRowValues(row: Record<string, unknown>): NormalizedRow {
-  const normalized: NormalizedRow = {};
-  for (const [key, value] of Object.entries(row)) {
-    if (key === "__rowNumber") {
-      normalized.__rowNumber = typeof value === "number" ? value : undefined;
-      continue;
-    }
-
-    if (value === null || value === undefined) {
-      normalized[key] = null;
-      continue;
-    }
-
-    if (typeof value === "string") {
-      const cleaned = value
-        .replace(/^\uFEFF/, "")
-        .replace(/\r/g, "")
-        .trim();
-      normalized[key] = cleaned.length === 0 ? null : cleaned;
-      continue;
-    }
-
-    normalized[key] = String(value);
-  }
-  return normalized;
-}
 
 export function parseOptionalString(value: unknown): string | null {
   if (value === null || value === undefined) return null;
@@ -101,39 +49,30 @@ export function parseDecimalToCents(value: unknown, field: string): number {
   if (parsed === null) {
     throw new Error(`Campo "${field}" é obrigatório`);
   }
-  const sanitized = parsed
-    .replace(/R\$/gi, "")
-    .replace(/\s+/g, "")
-    .replace(/\./g, "")
-    .replace(/,/g, ".");
-  if (!/^[-+]?\d*(?:\.\d+)?$/.test(sanitized)) {
+  const money = parseMoneyPtBR(parsed);
+  if (money === null) {
     throw new Error(`Valor monetário inválido em "${field}": ${parsed}`);
   }
-  const [integerPart, decimalPart = ""] = sanitized.split(".");
-  const cents = integerPart + decimalPart.padEnd(2, "0").slice(0, 2);
-  return Number.parseInt(cents, 10);
+  return Math.round(money * 100);
 }
 
 export function parseOptionalDecimalToCents(value: unknown): number | null {
   const parsed = parseOptionalString(value);
   if (parsed === null) return null;
-  const sanitized = parsed
-    .replace(/R\$/gi, "")
-    .replace(/\s+/g, "")
-    .replace(/\./g, "")
-    .replace(/,/g, ".");
-  if (!/^[-+]?\d*(?:\.\d+)?$/.test(sanitized)) {
-    return null;
-  }
-  const [integerPart, decimalPart = ""] = sanitized.split(".");
-  const cents = integerPart + decimalPart.padEnd(2, "0").slice(0, 2);
-  return Number.parseInt(cents, 10);
+  const money = parseMoneyPtBR(parsed);
+  if (money === null) return null;
+  return Math.round(money * 100);
 }
 
 export function parseDateFlexible(value: unknown, field: string): Date {
   const parsed = parseOptionalString(value);
   if (parsed === null) {
     throw new Error(`Campo "${field}" é obrigatório`);
+  }
+
+  const ptDate = parseDatePtBR(parsed);
+  if (ptDate) {
+    return new Date(Date.UTC(ptDate.getFullYear(), ptDate.getMonth(), ptDate.getDate()));
   }
 
   for (const pattern of DATE_PATTERNS) {
@@ -162,6 +101,12 @@ export function parseDateFlexible(value: unknown, field: string): Date {
 export function parseOptionalDate(value: unknown): Date | null {
   const parsed = parseOptionalString(value);
   if (parsed === null) return null;
+
+  const ptDate = parseDatePtBR(parsed);
+  if (ptDate) {
+    return new Date(Date.UTC(ptDate.getFullYear(), ptDate.getMonth(), ptDate.getDate()));
+  }
+
   for (const pattern of DATE_PATTERNS) {
     const match = pattern.exec(parsed);
     if (match) {

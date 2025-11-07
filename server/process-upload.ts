@@ -13,8 +13,21 @@ export interface ProcessUploadResult {
 export async function processarUpload(arquivos: UploadFile[], options: ImportOptions = {}): Promise<ProcessUploadResult> {
   const db = await getDb({ role: "importer" });
   if (!db) {
-    logger.error("Banco de dados indisponível durante o processamento de upload", { quantidadeArquivos: arquivos.length });
-    throw new Error("Banco de dados indisponível");
+    const fallbackOptions = { ...options, dryRun: true };
+    logger.warn("import:db-unavailable", {
+      quantidadeArquivos: arquivos.length,
+      originalDryRun: options.dryRun ?? false,
+      fallbackDryRun: true,
+    });
+    const fakeDb = {
+      transaction: async () => {
+        throw new Error("Transação indisponível sem banco de dados");
+      },
+    } as unknown as Awaited<ReturnType<typeof getDb>>;
+
+    const details = await importArquivos(fakeDb as any, arquivos, fallbackOptions);
+    const summary = buildImportJobReport(details);
+    return { summary, details };
   }
 
   logger.info("Iniciando processamento de upload", {

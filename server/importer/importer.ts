@@ -270,6 +270,9 @@ export async function importArquivos(db: Database, arquivos: UploadFile[], optio
     const fileStartedAt = new Date();
     let finalized = false;
     let fileStatus: "success" | "failed" = "success";
+    let scannedRows = 0;
+    let validatedRows = 0;
+    let failedValidations = 0;
 
     const finalizeCurrentFile = (status: "success" | "failed" = "success") => {
       if (finalized) return;
@@ -298,6 +301,9 @@ export async function importArquivos(db: Database, arquivos: UploadFile[], optio
         skipReasons: summary.skipReasonCounts,
         dryRun: summary.dryRun,
         durationMs: summary.durationMs,
+        scannedRows,
+        validatedRows,
+        failedValidations,
       });
     };
 
@@ -315,9 +321,20 @@ export async function importArquivos(db: Database, arquivos: UploadFile[], optio
 
     try {
       const buffer = Buffer.from(arquivo.base64, "base64");
+      logger.info("import:file-start", {
+        fileName: arquivo.nome,
+        detectedType: type,
+        dryRun,
+        sizeBytes: buffer.length,
+      });
       const parser = createCsvParser(buffer, type);
+      logger.info("import:parser-created", {
+        fileName: arquivo.nome,
+        type,
+      });
 
       const processRow = async (row: NormalizedRow, tx?: Transaction) => {
+        scannedRows += 1;
         const rowNumber = row.__rowNumber ?? summary.totalRows + 2;
         const context: RowContext = { rowNumber, type, fileName: arquivo.nome };
 
@@ -333,10 +350,12 @@ export async function importArquivos(db: Database, arquivos: UploadFile[], optio
         if (!validation.success || !validation.data) {
           registerSkip(summary, SkipReason.Validation);
           appendErrors(summary, validation.errors ?? []);
+          failedValidations += 1;
           return;
         }
 
         const record = validation.data;
+        validatedRows += 1;
 
         if (dryRun || !tx) {
           summary.inserted += 1;
@@ -367,11 +386,27 @@ export async function importArquivos(db: Database, arquivos: UploadFile[], optio
       }
 
       const missingHeaders = parser.getMissingHeaders();
+      const presentHeaders = parser.getPresentHeaders();
+      logger.info("import:file-rows", {
+        fileName: arquivo.nome,
+        type,
+        dryRun,
+        scannedRows,
+        validatedRows,
+        failedValidations,
+        presentHeaders,
+        missingHeaders,
+      });
       if (missingHeaders.length > 0) {
         registerSkip(summary, SkipReason.MissingHeader);
         summary.warnings.push({
           rowNumber: 1,
           reason: `Cabeçalhos ausentes: ${missingHeaders.join(", ")}`,
+        });
+        logger.warn("import:missing-headers", {
+          fileName: arquivo.nome,
+          type,
+          missingHeaders,
         });
       }
     } catch (error) {

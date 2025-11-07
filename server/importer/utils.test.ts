@@ -1,17 +1,12 @@
 import { describe, it, expect } from "vitest";
-import {
-  normalizeHeader,
-  parseDecimalToCents,
-  parseDateFlexible,
-  parseInteger,
-  parseBoolean,
-} from "./utils";
+import { NORMALIZE_HEADER } from "@/shared/headerAliases";
+import { parseDecimalToCents, parseDateFlexible, parseInteger, parseBoolean } from "./utils";
 
 describe("CSV utility helpers", () => {
   it("normalizes headers removing accents and whitespace", () => {
-    expect(normalizeHeader(" Município ")).toBe("municipio");
-    expect(normalizeHeader("Código do Cliente")).toBe("codigo_do_cliente");
-    expect(normalizeHeader("Valor-Total")).toBe("valor_total");
+    expect(NORMALIZE_HEADER(" Município ")).toBe("municipio");
+    expect(NORMALIZE_HEADER("Código do Cliente")).toBe("codigo_do_cliente");
+    expect(NORMALIZE_HEADER("Valor-Total")).toBe("valor_total");
   });
 
   it("parses pt-BR currency keeping cents precision", () => {

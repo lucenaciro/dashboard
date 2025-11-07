@@ -8,11 +8,17 @@
     "build": "vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit -p tsconfig.server.json",
+    "dev:sandbox": "NODE_ENV=development pnpm dev",
+    "db:reset": "tsx scripts/db/reset.ts",
     "lint": "pnpm tsx scripts/lint.ts",
     "format": "prettier --write .",
     "test": "vitest run",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
-    "probe:csv": "tsx scripts/pipeline_probe.ts"
+    "probe:csv": "tsx scripts/headers_probe.ts",
+    "import:dry": "tsx scripts/e2e/test-dry-run.ts",
+    "import:real": "tsx scripts/e2e/test-real-import.ts",
+    "logs:tail": "tsx scripts/logs/tail.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",
