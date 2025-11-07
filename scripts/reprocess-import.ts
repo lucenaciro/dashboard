@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { resolve, basename } from "node:path";
 import { processarUpload } from "../server/process-upload";
 import type { UploadFile } from "../server/importer/types";
+import { ImportJobError } from "../server/importer/importer";
+import { buildImportJobReport } from "../server/importer/summary";
 
 interface CliOptions {
   dryRun: boolean;
@@ -42,15 +44,20 @@ async function main() {
   try {
     const args = parseArgs(process.argv.slice(2));
     const uploads = await loadFiles(args.files);
-    const summary = await processarUpload(uploads, { dryRun: args.dryRun });
-    console.log(JSON.stringify(summary, null, 2));
+    const result = await processarUpload(uploads, { dryRun: args.dryRun });
+    console.log(JSON.stringify({ summary: result.summary, totals: result.details.totals }, null, 2));
     if (args.dryRun) {
       console.log("✅ Dry-run concluído. Nenhum dado foi gravado.");
     } else {
       console.log("✅ Importação concluída com sucesso.");
     }
   } catch (error) {
-    console.error("❌ Falha ao reprocessar CSVs:", error);
+    if (error instanceof ImportJobError) {
+      console.error("❌ Falha ao reprocessar CSVs:", error.message);
+      console.error(JSON.stringify({ summary: buildImportJobReport(error.summary) }, null, 2));
+    } else {
+      console.error("❌ Falha ao reprocessar CSVs:", error);
+    }
     process.exitCode = 1;
   }
 }

@@ -75,7 +75,7 @@ async function processarUploadEmCamadas(jobId: string, files: { name: string; co
     // Passo 2: Processar arquivos do S3
     logger.info(`[UPLOAD_CAMADAS] Job ${jobId}: Processando arquivos do armazenamento`);
     
-    const db = await getDb();
+    const db = await getDb({ role: "importer" });
     if (!db) throw new Error('Database not available');
     
     for (let i = 0; i < files.length; i++) {

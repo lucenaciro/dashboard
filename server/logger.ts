@@ -7,13 +7,57 @@
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 
+type LogLevel = 'INFO' | 'WARN' | 'ERROR';
+
+function safeSerialize(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+      cause: 'cause' in value && value.cause ? safeSerialize(value.cause as unknown, seen) : undefined,
+    };
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => safeSerialize(item, seen));
+  }
+
+  if (value && typeof value === 'object') {
+    if (seen.has(value as object)) {
+      return '[Circular]';
+    }
+    seen.add(value as object);
+    const serialized: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      serialized[key] = safeSerialize(entry, seen);
+    }
+    seen.delete(value as object);
+    return serialized;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  return value;
+}
+
 export interface LogEntry {
   timestamp: string;
-  nivel: 'INFO' | 'WARN' | 'ERROR';
+  nivel: LogLevel;
   cicloId?: number;
   tipoArquivo?: string;
   mensagem: string;
-  detalhes?: any;
+  detalhes?: unknown;
 }
 
 export interface ProcessingLog {
@@ -57,31 +101,52 @@ class Logger {
     return new Date().toISOString();
   }
 
-  info(mensagem: string, detalhes?: any) {
+  info(mensagem: string, detalhes?: unknown) {
     this.addLog('INFO', mensagem, detalhes);
   }
 
-  warn(mensagem: string, detalhes?: any) {
+  warn(mensagem: string, detalhes?: unknown) {
     this.addLog('WARN', mensagem, detalhes);
   }
 
-  error(mensagem: string, detalhes?: any) {
+  error(mensagem: string, detalhes?: unknown) {
     this.addLog('ERROR', mensagem, detalhes);
   }
 
-  private addLog(nivel: LogEntry['nivel'], mensagem: string, detalhes?: any) {
+  private addLog(nivel: LogLevel, mensagem: string, detalhes?: unknown) {
+    const timestamp = this.formatTimestamp();
+    const serializedDetails = detalhes === undefined ? undefined : safeSerialize(detalhes);
+
     const entry: LogEntry = {
-      timestamp: this.formatTimestamp(),
+      timestamp,
       nivel,
       mensagem,
-      detalhes,
+      detalhes: serializedDetails,
     };
 
     this.logs.push(entry);
-    
-    // Console output
-    const prefix = `[${entry.timestamp}] [${nivel}]`;
-    console.log(`${prefix} ${mensagem}`, detalhes || '');
+
+    const payload: Record<string, unknown> = {
+      ts: timestamp,
+      level: nivel,
+      message: mensagem,
+    };
+
+    if (serializedDetails !== undefined) {
+      payload.details = serializedDetails;
+    }
+
+    const line = JSON.stringify(payload);
+    switch (nivel) {
+      case 'ERROR':
+        console.error(line);
+        break;
+      case 'WARN':
+        console.warn(line);
+        break;
+      default:
+        console.log(line);
+    }
   }
 
   /**

@@ -39,6 +39,13 @@ type UpsertResult = {
   updated: number;
 };
 
+export class ImportJobError extends Error {
+  constructor(message: string, public readonly summary: ImportSummary, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "ImportJobError";
+  }
+}
+
 function createInitialSummary(fileName: string, type: ImportFileType | "desconhecido", dryRun: boolean): FileImportSummary {
   const startedAt = new Date();
   return {
@@ -255,10 +262,44 @@ export async function importArquivos(db: Database, arquivos: UploadFile[], optio
   const dryRun = options.dryRun ?? false;
   const summaries: FileImportSummary[] = [];
 
+  const finalizeJob = (finishedAt: Date) => finalizeImportJob(summaries, startedAt, finishedAt, dryRun);
+
   for (const arquivo of arquivos) {
     const type = inferFileType(arquivo.nome);
     const summary = createInitialSummary(arquivo.nome, type ?? "desconhecido", dryRun);
     const fileStartedAt = new Date();
+    let finalized = false;
+    let fileStatus: "success" | "failed" = "success";
+
+    const finalizeCurrentFile = (status: "success" | "failed" = "success") => {
+      if (finalized) return;
+      fileStatus = status;
+      if (dryRun) {
+        summary.warnings.push({
+          rowNumber: 0,
+          reason: "Dry-run: nenhuma escrita realizada; totais representam operações previstas.",
+        });
+      }
+      finalizeSummary(summary, fileStartedAt);
+      summaries.push(summary);
+      finalized = true;
+      logger.info("import:file-summary", {
+        fileName: summary.fileName,
+        type: summary.type,
+        status: fileStatus,
+        totals: {
+          rows: summary.totalRows,
+          inserted: summary.inserted,
+          updated: summary.updated,
+          skipped: summary.skipped,
+        },
+        warnings: summary.warnings.length,
+        errors: summary.errors.length,
+        skipReasons: summary.skipReasonCounts,
+        dryRun: summary.dryRun,
+        durationMs: summary.durationMs,
+      });
+    };
 
     if (!type) {
       registerSkip(summary, SkipReason.MissingType);
@@ -268,8 +309,7 @@ export async function importArquivos(db: Database, arquivos: UploadFile[], optio
         reason: `Não foi possível inferir o tipo do arquivo a partir do nome "${arquivo.nome}"`,
         value: null,
       });
-      finalizeSummary(summary, fileStartedAt);
-      summaries.push(summary);
+      finalizeCurrentFile();
       continue;
     }
 
@@ -310,6 +350,7 @@ export async function importArquivos(db: Database, arquivos: UploadFile[], optio
         } catch (error) {
           registerSkip(summary, SkipReason.Persistence);
           trackError(summary, error as Error, context);
+          throw error;
         }
       };
 
@@ -334,27 +375,44 @@ export async function importArquivos(db: Database, arquivos: UploadFile[], optio
         });
       }
     } catch (error) {
-      registerSkip(summary, SkipReason.Persistence);
-      summary.errors.push({
-        rowNumber: 0,
-        column: undefined,
-        reason: (error as Error).message,
-        value: null,
-      });
-      logger.error(`Falha ao processar arquivo ${arquivo.nome}`, { error });
-    } finally {
-      if (dryRun) {
-        summary.warnings.push({
+      if (summary.errors.length === 0) {
+        registerSkip(summary, SkipReason.Persistence);
+        summary.errors.push({
           rowNumber: 0,
-          reason: 'Dry-run: nenhuma escrita realizada; totais representam operações previstas.',
+          column: undefined,
+          reason: (error as Error).message,
+          value: null,
         });
       }
-      finalizeSummary(summary, fileStartedAt);
-      summaries.push(summary);
-      logger.info(`Resumo do arquivo ${arquivo.nome}`, summary);
+
+      finalizeCurrentFile("failed");
+      const aggregated = finalizeJob(new Date());
+      logger.error(`Falha ao processar arquivo ${arquivo.nome}`, {
+        error,
+        fileName: arquivo.nome,
+        type,
+        totals: {
+          rows: summary.totalRows,
+          inserted: summary.inserted,
+          updated: summary.updated,
+          skipped: summary.skipped,
+        },
+      });
+      throw new ImportJobError(`Falha ao processar o arquivo ${arquivo.nome}`, aggregated, { cause: error });
+    } finally {
+      finalizeCurrentFile(fileStatus);
     }
   }
 
+  return finalizeJob(new Date());
+}
+
+function finalizeImportJob(
+  summaries: FileImportSummary[],
+  startedAt: Date,
+  finishedAt: Date,
+  dryRun: boolean
+): ImportSummary {
   const totals = summaries.reduce(
     (acc, item) => {
       acc.rows += item.totalRows;
@@ -365,8 +423,6 @@ export async function importArquivos(db: Database, arquivos: UploadFile[], optio
     },
     { rows: 0, inserted: 0, updated: 0, skipped: 0 }
   );
-
-  const finishedAt = new Date();
 
   return {
     dryRun,

@@ -3,6 +3,7 @@ import multer from 'multer';
 import cors from 'cors';
 import { processarUpload } from './process-upload';
 import { logger } from './logger';
+import { ImportJobError } from './importer/importer';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -26,11 +27,18 @@ router.post('/api/upload', upload.array('files'), async (req, res) => {
       base64: file.buffer.toString('base64'),
     }));
 
-    const resultado = await processarUpload(arquivos, { dryRun });
+    const { summary, details } = await processarUpload(arquivos, { dryRun });
 
-    res.json(resultado);
+    res.json({
+      summary,
+      details,
+    });
   } catch (error) {
     logger.error('Erro no upload', { error });
+    if (error instanceof ImportJobError) {
+      res.status(500).json({ error: error.message, summary: error.summary });
+      return;
+    }
     res.status(500).json({ error: String(error) });
   }
 });

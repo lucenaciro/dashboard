@@ -1,20 +1,148 @@
 import { eq, and, gte, lte, sql, desc, asc, inArray, count } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, clientes, vendedores, produtos, movimentacoes, estoque } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import {
+  InsertUser,
+  users,
+  clientes,
+  vendedores,
+  produtos,
+  movimentacoes,
+  estoque,
+} from "../drizzle/schema";
+import { ENV } from "./_core/env";
+import { logger } from "./logger";
+import { getCachedMetric, metricsCacheKey, setCachedMetric } from "./metrics/cache";
+
+type ConnectionRole = "app" | "metrics" | "importer" | "probe" | string;
+
+interface DatabaseConnectionDescriptor {
+  host: string;
+  database: string | null;
+  schema: string | null;
+  searchPath: string | null;
+}
+
+interface GetDbOptions {
+  role?: ConnectionRole;
+  log?: boolean;
+}
+
+const loggedRoles = new Set<ConnectionRole>();
+let cachedDescriptor: DatabaseConnectionDescriptor | null = null;
+const failedRoles = new Set<ConnectionRole>();
+
+function normalizeCachePayload(payload: Record<string, unknown> | undefined) {
+  if (!payload) return {} as Record<string, unknown>;
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      if (value.length === 0) continue;
+      normalized[key] = [...value].sort();
+    } else {
+      normalized[key] = value;
+    }
+  }
+  return normalized;
+}
+
+function maskValue(value: string | null): string | null {
+  if (!value) return null;
+  if (value.length <= 2) return "*".repeat(value.length);
+  const visible = Math.min(3, Math.floor(value.length / 2));
+  const prefix = value.slice(0, visible);
+  const suffix = value.slice(-Math.max(1, visible - 1));
+  return `${prefix}${"*".repeat(Math.max(1, value.length - (prefix.length + suffix.length)))}${suffix}`;
+}
+
+function parseDatabaseUrl(url: string): DatabaseConnectionDescriptor {
+  try {
+    const parsed = new URL(url);
+    const database = parsed.pathname.replace(/^\/+/, "") || null;
+    const schema = parsed.searchParams.get("schema") ?? parsed.searchParams.get("schemaName");
+    const searchPath = parsed.searchParams.get("search_path");
+    const portSegment = parsed.port ? `:${parsed.port}` : "";
+    return {
+      host: `${parsed.hostname}${portSegment}`,
+      database,
+      schema: schema ?? database,
+      searchPath,
+    };
+  } catch (error) {
+    logger.warn("[Database] Unable to parse DATABASE_URL", { error });
+    return {
+      host: "unknown",
+      database: null,
+      schema: null,
+      searchPath: null,
+    };
+  }
+}
+
+export function getDatabaseConnectionInfo(): DatabaseConnectionDescriptor | null {
+  if (!process.env.DATABASE_URL) {
+    return null;
+  }
+  if (!cachedDescriptor) {
+    cachedDescriptor = parseDatabaseUrl(process.env.DATABASE_URL);
+  }
+  return cachedDescriptor;
+}
+
+export function logDatabaseConnection(role: ConnectionRole = "app"): void {
+  if (loggedRoles.has(role)) {
+    return;
+  }
+
+  const descriptor = getDatabaseConnectionInfo();
+  if (!descriptor) {
+    if (!failedRoles.has(role)) {
+      logger.error("db:connection", {
+        role,
+        reason: "DATABASE_URL not configured",
+      });
+      failedRoles.add(role);
+    }
+    return;
+  }
+
+  logger.info("db:connection", {
+    role,
+    host: descriptor.host,
+    database: maskValue(descriptor.database),
+    schema: maskValue(descriptor.schema),
+    searchPath: maskValue(descriptor.searchPath),
+  });
+  loggedRoles.add(role);
+}
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
-export async function getDb() {
+export async function getDb(options: GetDbOptions = {}) {
+  const { role = "app", log = true } = options;
+
   if (!_db && process.env.DATABASE_URL) {
     try {
       _db = drizzle(process.env.DATABASE_URL);
     } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
+      logger.error("[Database] Failed to connect", { error });
       _db = null;
     }
   }
+
+  if (log) {
+    if (_db) {
+      logDatabaseConnection(role);
+    } else if (!failedRoles.has(role)) {
+      logger.error("db:connection", {
+        role,
+        reason: "Database unavailable",
+      });
+      failedRoles.add(role);
+    }
+  }
+
   return _db;
 }
 
@@ -23,7 +151,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     throw new Error("User openId is required for upsert");
   }
 
-  const db = await getDb();
+  const db = await getDb({ role: "app" });
   if (!db) {
     console.warn("[Database] Cannot upsert user: database not available");
     return;
@@ -78,7 +206,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 }
 
 export async function getUserByOpenId(openId: string) {
-  const db = await getDb();
+  const db = await getDb({ role: "app" });
   if (!db) {
     console.warn("[Database] Cannot get user: database not available");
     return undefined;
@@ -91,6 +219,62 @@ export async function getUserByOpenId(openId: string) {
 
 // ============ DASHBOARD QUERIES ============
 
+type KPIResult = {
+  totalVendas: number;
+  valorTotal: number;
+  clientesUnicos: number;
+};
+
+type TopClienteMetric = {
+  codigoCliente: string;
+  nomeCliente: string | null;
+  totalVendas: number;
+  valorTotal: number;
+  ticketMedio: number;
+};
+
+type TopProdutoMetric = {
+  codigoProduto: string;
+  nomeProduto: string | null;
+  quantidadeTotal: number;
+  valorTotal: number;
+};
+
+type ClienteMetric = {
+  id: number;
+  codigoCliente: string;
+  nome: string;
+  municipio: string | null;
+  estado: string | null;
+  tipoCliente: string | null;
+  totalVendas: number;
+  valorTotal: number;
+  ultimaCompra: string | null;
+};
+
+type VendedorMetric = {
+  id: number;
+  codigoVendedor: string;
+  nome: string;
+  ativo: boolean | null;
+  totalVendas: number;
+  valorTotal: number;
+  clientesAtivos: number;
+};
+
+type AnalisePositivacaoMetric = {
+  clientes30: number;
+  clientes60: number;
+  clientes90: number;
+};
+
+type EvolucaoMensalMetric = {
+  mes: string;
+  totalVendas: number;
+  valorTotal: number;
+  ticketMedio: number;
+};
+
 /**
  * Get KPIs principais do dashboard
  */
@@ -100,8 +284,14 @@ export async function getKPIs(filters?: {
   vendedores?: string[];
   clientes?: string[];
   tiposCliente?: string[];
-}) {
-  const db = await getDb();
+}): Promise<KPIResult | null> {
+  const cacheKey = metricsCacheKey("kpis", normalizeCachePayload(filters as Record<string, unknown> | undefined));
+  const cached = getCachedMetric<KPIResult | null>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const db = await getDb({ role: "metrics" });
   if (!db) return null;
 
   let query = db.select({
@@ -129,7 +319,11 @@ export async function getKPIs(filters?: {
   }
 
   const result = await query;
-  return result[0];
+  const value = result[0] ?? null;
+  if (value) {
+    setCachedMetric(cacheKey, value);
+  }
+  return value;
 }
 
 /**
@@ -138,8 +332,15 @@ export async function getKPIs(filters?: {
 export async function getTopClientes(limit: number = 10, filters?: {
   dataInicio?: string;
   dataFim?: string;
-}) {
-  const db = await getDb();
+}): Promise<TopClienteMetric[]> {
+  const payload = normalizeCachePayload({ ...filters, limit } as Record<string, unknown>);
+  const cacheKey = metricsCacheKey("topClientes", payload);
+  const cached = getCachedMetric<TopClienteMetric[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const db = await getDb({ role: "metrics" });
   if (!db) return [];
 
   let query = db.select({
@@ -166,7 +367,9 @@ export async function getTopClientes(limit: number = 10, filters?: {
     query = query.where(and(...conditions)) as any;
   }
 
-  return await query;
+  const result = await query;
+  setCachedMetric(cacheKey, result);
+  return result as TopClienteMetric[];
 }
 
 /**
@@ -175,8 +378,15 @@ export async function getTopClientes(limit: number = 10, filters?: {
 export async function getTopProdutos(limit: number = 10, filters?: {
   dataInicio?: string;
   dataFim?: string;
-}) {
-  const db = await getDb();
+}): Promise<TopProdutoMetric[]> {
+  const payload = normalizeCachePayload({ ...filters, limit } as Record<string, unknown>);
+  const cacheKey = metricsCacheKey("topProdutos", payload);
+  const cached = getCachedMetric<TopProdutoMetric[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const db = await getDb({ role: "metrics" });
   if (!db) return [];
 
   let query = db.select({
@@ -202,7 +412,9 @@ export async function getTopProdutos(limit: number = 10, filters?: {
     query = query.where(and(...conditions)) as any;
   }
 
-  return await query;
+  const result = await query;
+  setCachedMetric(cacheKey, result);
+  return result as TopProdutoMetric[];
 }
 
 /**
@@ -213,8 +425,15 @@ export async function getClientesComMetricas(filters?: {
   dataFim?: string;
   tiposCliente?: string[];
   busca?: string;
-}) {
-  const db = await getDb();
+}): Promise<ClienteMetric[]> {
+  const payload = normalizeCachePayload(filters as Record<string, unknown> | undefined);
+  const cacheKey = metricsCacheKey("clientesMetricas", payload);
+  const cached = getCachedMetric<ClienteMetric[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const db = await getDb({ role: "metrics" });
   if (!db) return [];
 
   // Subquery para métricas de vendas
@@ -254,7 +473,9 @@ export async function getClientesComMetricas(filters?: {
     query = query.where(and(...conditions)) as any;
   }
 
-  return await query;
+  const result = await query;
+  setCachedMetric(cacheKey, result);
+  return result as ClienteMetric[];
 }
 
 /**
@@ -263,8 +484,15 @@ export async function getClientesComMetricas(filters?: {
 export async function getVendedoresComMetricas(filters?: {
   dataInicio?: string;
   dataFim?: string;
-}) {
-  const db = await getDb();
+}): Promise<VendedorMetric[]> {
+  const payload = normalizeCachePayload(filters as Record<string, unknown> | undefined);
+  const cacheKey = metricsCacheKey("vendedoresMetricas", payload);
+  const cached = getCachedMetric<VendedorMetric[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const db = await getDb({ role: "metrics" });
   if (!db) return [];
 
   const vendasSubquery = db.select({
@@ -291,14 +519,16 @@ export async function getVendedoresComMetricas(filters?: {
     .leftJoin(vendasSubquery, eq(vendedores.codigoVendedor, vendasSubquery.codigoVendedor))
     .orderBy(asc(vendedores.nome));
 
-  return await query;
+  const result = await query;
+  setCachedMetric(cacheKey, result);
+  return result as VendedorMetric[];
 }
 
 /**
  * Get histórico de compras de um cliente
  */
 export async function getHistoricoCliente(codigoCliente: string) {
-  const db = await getDb();
+  const db = await getDb({ role: "metrics" });
   if (!db) return [];
 
   return await db.select()
@@ -311,8 +541,14 @@ export async function getHistoricoCliente(codigoCliente: string) {
 /**
  * Get análise de positivação
  */
-export async function getAnalisePositivacao() {
-  const db = await getDb();
+export async function getAnalisePositivacao(): Promise<AnalisePositivacaoMetric | null> {
+  const cacheKey = metricsCacheKey("analisePositivacao");
+  const cached = getCachedMetric<AnalisePositivacaoMetric | null>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const db = await getDb({ role: "metrics" });
   if (!db) return null;
 
   const hoje = new Date();
@@ -326,14 +562,24 @@ export async function getAnalisePositivacao() {
     clientes90: sql<number>`COUNT(DISTINCT CASE WHEN ${movimentacoes.data} >= ${dias90} AND ${movimentacoes.data} < ${dias60} THEN ${movimentacoes.codigoCliente} END)`,
   }).from(movimentacoes);
 
-  return result[0];
+  const value = result[0] ?? null;
+  if (value) {
+    setCachedMetric(cacheKey, value);
+  }
+  return value;
 }
 
 /**
  * Get evolução mensal de vendas
  */
-export async function getEvolucaoMensal(meses: number = 12) {
-  const db = await getDb();
+export async function getEvolucaoMensal(meses: number = 12): Promise<EvolucaoMensalMetric[]> {
+  const cacheKey = metricsCacheKey("evolucaoMensal", { meses });
+  const cached = getCachedMetric<EvolucaoMensalMetric[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const db = await getDb({ role: "metrics" });
   if (!db) return [];
 
   // Buscar todas as movimentações e agrupar no JavaScript
@@ -362,7 +608,7 @@ export async function getEvolucaoMensal(meses: number = 12) {
   }
 
   // Converter para array e ordenar
-  const resultado = Array.from(porMes.entries())
+  const resultado: EvolucaoMensalMetric[] = Array.from(porMes.entries())
     .map(([mes, dados]) => ({
       mes,
       totalVendas: dados.totalVendas,
@@ -372,5 +618,6 @@ export async function getEvolucaoMensal(meses: number = 12) {
     .sort((a, b) => b.mes.localeCompare(a.mes))
     .slice(0, meses);
 
+  setCachedMetric(cacheKey, resultado);
   return resultado;
 }
