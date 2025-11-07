@@ -1,16 +1,15 @@
 import { COOKIE_NAME } from "@shared/const";
 import { sql } from "drizzle-orm";
+import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
-import { z } from "zod";
 import * as db from "./db";
 import { getDb } from "./db";
 import { clientes, vendedores, produtos, movimentacoes, estoque } from "../drizzle/schema";
-import { processarUpload } from "./process-upload";
-import { logger } from "./logger";
 import { criarJobUpload, consultarJobUpload } from "./uploadCamadas";
-import type { UploadFile } from "./importer/types";
+import { dadosRouter } from "./importer/router";
+import { logger } from "./logger";
 
 export const appRouter = router({
   uploadCamadas: router({
@@ -55,60 +54,13 @@ export const appRouter = router({
           };
         }
       } catch (error) {
-        console.error('Erro ao buscar período:', error);
+        logger.error('periodo:erro', { error });
       }
 
       return { inicio: null, fim: null, ano: new Date().getFullYear() };
     }),
   }),
-  dados: router({
-    importar: publicProcedure
-      .input(
-        z.object({
-          clientes: z.string().optional(),
-          vendedores: z.string().optional(),
-          produtos: z.string().optional(),
-          movimentacoes: z.string().optional(),
-          estoque: z.string().optional(),
-          dryRun: z.boolean().optional(),
-        })
-      )
-      .mutation(async ({ input }) => {
-        const arquivos: UploadFile[] = [];
-
-        const appendIfPresent = (conteudo: string | undefined, nome: string) => {
-          if (!conteudo) return;
-          const trimmed = conteudo.trim();
-          if (trimmed.length === 0) return;
-          arquivos.push({
-            nome,
-            base64: Buffer.from(trimmed, 'utf8').toString('base64'),
-          });
-        };
-
-        appendIfPresent(input.clientes, 'clientes.csv');
-        appendIfPresent(input.vendedores, 'vendedores.csv');
-        appendIfPresent(input.produtos, 'produtos.csv');
-        appendIfPresent(input.movimentacoes, 'movimentacoes.csv');
-        appendIfPresent(input.estoque, 'estoque.csv');
-
-        if (arquivos.length === 0) {
-          throw new Error('Nenhum conteúdo CSV fornecido');
-        }
-
-        const { summary, details } = await processarUpload(arquivos, { dryRun: input.dryRun });
-
-        return {
-          sucesso: true,
-          totalProcessado: summary.inserted + summary.updated,
-          totalInserido: summary.inserted,
-          totalAtualizado: summary.updated,
-          totalPulos: summary.skipped,
-          resumo: details,
-          summary,
-        };
-      }),
-  }),
+  dados: dadosRouter,
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),

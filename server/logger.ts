@@ -1,13 +1,14 @@
-/**
- * Sistema de logging técnico detalhado
- * Registra campos inválidos, linhas descartadas, total processado
- * Salva logs em TXT + JSON para download
- */
+import { appendFile, mkdir, readdir, rm } from "node:fs/promises";
+import path from "node:path";
 
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
+export type LogLevel = "info" | "warn" | "error";
 
-type LogLevel = 'INFO' | 'WARN' | 'ERROR';
+export interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  message: string;
+  details?: unknown;
+}
 
 function safeSerialize(value: unknown, seen = new WeakSet<object>()): unknown {
   if (value instanceof Error) {
@@ -15,7 +16,7 @@ function safeSerialize(value: unknown, seen = new WeakSet<object>()): unknown {
       name: value.name,
       message: value.message,
       stack: value.stack,
-      cause: 'cause' in value && value.cause ? safeSerialize(value.cause as unknown, seen) : undefined,
+      cause: "cause" in value && value.cause ? safeSerialize(value.cause as unknown, seen) : undefined,
     };
   }
 
@@ -23,7 +24,7 @@ function safeSerialize(value: unknown, seen = new WeakSet<object>()): unknown {
     return value.toISOString();
   }
 
-  if (typeof value === 'bigint') {
+  if (typeof value === "bigint") {
     return value.toString();
   }
 
@@ -31,9 +32,9 @@ function safeSerialize(value: unknown, seen = new WeakSet<object>()): unknown {
     return value.map(item => safeSerialize(item, seen));
   }
 
-  if (value && typeof value === 'object') {
+  if (value && typeof value === "object") {
     if (seen.has(value as object)) {
-      return '[Circular]';
+      return "[Circular]";
     }
     seen.add(value as object);
     const serialized: Record<string, unknown> = {};
@@ -51,286 +52,117 @@ function safeSerialize(value: unknown, seen = new WeakSet<object>()): unknown {
   return value;
 }
 
-export interface LogEntry {
-  timestamp: string;
-  nivel: LogLevel;
-  cicloId?: number;
-  tipoArquivo?: string;
-  mensagem: string;
-  detalhes?: unknown;
+const LOG_DIR = process.env.LOG_DIR ?? path.resolve(process.cwd(), "logs");
+const LOG_PREFIX = "dashboard";
+const RETENTION_DAYS = 10;
+
+function formatDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
-export interface ProcessingLog {
-  cicloId: number;
-  tipoArquivo: string;
-  inicio: string;
-  fim?: string;
-  status: 'processando' | 'concluido' | 'erro';
-  totalLinhas: number;
-  linhasValidas: number;
-  linhasInvalidas: number;
-  linhasDescartadas: number;
-  camposInvalidos: Array<{
-    linha: number;
-    campo: string;
-    valor: any;
-    erro: string;
-  }>;
-  avisos: string[];
-  erros: string[];
+async function ensureDirectory(dir: string) {
+  await mkdir(dir, { recursive: true });
+}
+
+async function cleanupOldLogs(dir: string) {
+  const entries = await readdir(dir).catch(() => []);
+  const logFiles = entries.filter(name => name.startsWith(LOG_PREFIX) && name.endsWith(".log"));
+  if (logFiles.length <= RETENTION_DAYS) return;
+  const sorted = logFiles.sort();
+  const excess = sorted.length - RETENTION_DAYS;
+  const toRemove = sorted.slice(0, excess);
+  await Promise.all(
+    toRemove.map(async file => {
+      try {
+        await rm(path.join(dir, file));
+      } catch (error) {
+        process.stderr.write(`Failed to remove old log ${file}: ${String(error)}\n`);
+      }
+    })
+  );
 }
 
 class Logger {
-  private logs: LogEntry[] = [];
-  private processLogs: Map<string, ProcessingLog> = new Map();
-  private logDir: string = '/tmp/dashboard-logs';
+  private currentDate: string;
+  private queue: Promise<void> = Promise.resolve();
+  private listeners = new Set<(entry: LogEntry) => void>();
 
   constructor() {
-    this.init();
+    this.currentDate = formatDate(new Date());
+    void ensureDirectory(LOG_DIR).then(() => cleanupOldLogs(LOG_DIR));
   }
 
-  private async init() {
-    try {
-      await mkdir(this.logDir, { recursive: true });
-    } catch (error) {
-      console.error('Erro ao criar diretório de logs:', error);
-    }
+  subscribe(listener: (entry: LogEntry) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
-  private formatTimestamp(): string {
-    return new Date().toISOString();
+  info(message: string, details?: unknown) {
+    this.log("info", message, details);
   }
 
-  info(mensagem: string, detalhes?: unknown) {
-    this.addLog('INFO', mensagem, detalhes);
+  warn(message: string, details?: unknown) {
+    this.log("warn", message, details);
   }
 
-  warn(mensagem: string, detalhes?: unknown) {
-    this.addLog('WARN', mensagem, detalhes);
+  error(message: string, details?: unknown) {
+    this.log("error", message, details);
   }
 
-  error(mensagem: string, detalhes?: unknown) {
-    this.addLog('ERROR', mensagem, detalhes);
-  }
-
-  private addLog(nivel: LogLevel, mensagem: string, detalhes?: unknown) {
-    const timestamp = this.formatTimestamp();
-    const serializedDetails = detalhes === undefined ? undefined : safeSerialize(detalhes);
-
+  private log(level: LogLevel, message: string, details?: unknown) {
     const entry: LogEntry = {
-      timestamp,
-      nivel,
-      mensagem,
-      detalhes: serializedDetails,
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      details: details === undefined ? undefined : safeSerialize(details),
     };
 
-    this.logs.push(entry);
-
-    const payload: Record<string, unknown> = {
-      ts: timestamp,
-      level: nivel,
-      message: mensagem,
-    };
-
-    if (serializedDetails !== undefined) {
-      payload.details = serializedDetails;
-    }
-
-    const line = JSON.stringify(payload);
-    switch (nivel) {
-      case 'ERROR':
-        console.error(line);
-        break;
-      case 'WARN':
-        console.warn(line);
-        break;
-      default:
-        console.log(line);
-    }
-  }
-
-  /**
-   * Inicia log de processamento de arquivo
-   */
-  startProcessing(cicloId: number, tipoArquivo: string): string {
-    const logId = `${cicloId}-${tipoArquivo}-${Date.now()}`;
-    
-    const processLog: ProcessingLog = {
-      cicloId,
-      tipoArquivo,
-      inicio: this.formatTimestamp(),
-      status: 'processando',
-      totalLinhas: 0,
-      linhasValidas: 0,
-      linhasInvalidas: 0,
-      linhasDescartadas: 0,
-      camposInvalidos: [],
-      avisos: [],
-      erros: [],
-    };
-
-    this.processLogs.set(logId, processLog);
-    this.info(`Iniciando processamento: ${tipoArquivo}`, { cicloId, logId });
-
-    return logId;
-  }
-
-  /**
-   * Registra campo inválido
-   */
-  logInvalidField(logId: string, linha: number, campo: string, valor: any, erro: string) {
-    const log = this.processLogs.get(logId);
-    if (log) {
-      log.camposInvalidos.push({ linha, campo, valor, erro });
-      log.linhasInvalidas++;
-    }
-  }
-
-  /**
-   * Registra linha descartada
-   */
-  logDiscardedLine(logId: string, linha: number, motivo: string) {
-    const log = this.processLogs.get(logId);
-    if (log) {
-      log.linhasDescartadas++;
-      log.erros.push(`Linha ${linha}: ${motivo}`);
-    }
-  }
-
-  /**
-   * Registra aviso
-   */
-  logWarning(logId: string, aviso: string) {
-    const log = this.processLogs.get(logId);
-    if (log) {
-      log.avisos.push(aviso);
-    }
-    this.warn(aviso, { logId });
-  }
-
-  /**
-   * Finaliza log de processamento
-   */
-  endProcessing(logId: string, sucesso: boolean = true) {
-    const log = this.processLogs.get(logId);
-    if (log) {
-      log.fim = this.formatTimestamp();
-      log.status = sucesso ? 'concluido' : 'erro';
-      log.linhasValidas = log.totalLinhas - log.linhasInvalidas - log.linhasDescartadas;
-
-      this.info(`Processamento finalizado: ${log.tipoArquivo}`, {
-        totalLinhas: log.totalLinhas,
-        linhasValidas: log.linhasValidas,
-        linhasInvalidas: log.linhasInvalidas,
-        linhasDescartadas: log.linhasDescartadas,
+    this.notify(entry);
+    this.queue = this.queue
+      .then(() => this.persist(entry))
+      .catch(error => {
+        process.stderr.write(`Logger persistence failed: ${String(error)}\n`);
       });
-    }
   }
 
-  /**
-   * Obtém log de processamento
-   */
-  getProcessLog(logId: string): ProcessingLog | undefined {
-    return this.processLogs.get(logId);
-  }
-
-  /**
-   * Salva logs em arquivo TXT
-   */
-  async saveToTXT(logId: string): Promise<string> {
-    const log = this.processLogs.get(logId);
-    if (!log) throw new Error('Log não encontrado');
-
-    const lines: string[] = [];
-    lines.push('='.repeat(80));
-    lines.push(`LOG DE PROCESSAMENTO - ${log.tipoArquivo.toUpperCase()}`);
-    lines.push('='.repeat(80));
-    lines.push('');
-    lines.push(`Ciclo ID: ${log.cicloId}`);
-    lines.push(`Início: ${log.inicio}`);
-    lines.push(`Fim: ${log.fim || 'Em processamento'}`);
-    lines.push(`Status: ${log.status}`);
-    lines.push('');
-    lines.push('-'.repeat(80));
-    lines.push('ESTATÍSTICAS');
-    lines.push('-'.repeat(80));
-    lines.push(`Total de linhas: ${log.totalLinhas}`);
-    lines.push(`Linhas válidas: ${log.linhasValidas}`);
-    lines.push(`Linhas inválidas: ${log.linhasInvalidas}`);
-    lines.push(`Linhas descartadas: ${log.linhasDescartadas}`);
-    lines.push('');
-
-    if (log.camposInvalidos.length > 0) {
-      lines.push('-'.repeat(80));
-      lines.push('CAMPOS INVÁLIDOS');
-      lines.push('-'.repeat(80));
-      log.camposInvalidos.forEach(({ linha, campo, valor, erro }) => {
-        lines.push(`Linha ${linha} | Campo: ${campo} | Valor: ${valor} | Erro: ${erro}`);
-      });
-      lines.push('');
-    }
-
-    if (log.avisos.length > 0) {
-      lines.push('-'.repeat(80));
-      lines.push('AVISOS');
-      lines.push('-'.repeat(80));
-      log.avisos.forEach(aviso => lines.push(`⚠ ${aviso}`));
-      lines.push('');
-    }
-
-    if (log.erros.length > 0) {
-      lines.push('-'.repeat(80));
-      lines.push('ERROS');
-      lines.push('-'.repeat(80));
-      log.erros.forEach(erro => lines.push(`✗ ${erro}`));
-      lines.push('');
-    }
-
-    lines.push('='.repeat(80));
-
-    const filename = `log-${logId}.txt`;
-    const filepath = path.join(this.logDir, filename);
-    await writeFile(filepath, lines.join('\n'), 'utf-8');
-
-    return filepath;
-  }
-
-  /**
-   * Salva logs em arquivo JSON
-   */
-  async saveToJSON(logId: string): Promise<string> {
-    const log = this.processLogs.get(logId);
-    if (!log) throw new Error('Log não encontrado');
-
-    const filename = `log-${logId}.json`;
-    const filepath = path.join(this.logDir, filename);
-    await writeFile(filepath, JSON.stringify(log, null, 2), 'utf-8');
-
-    return filepath;
-  }
-
-  /**
-   * Obtém todos os logs
-   */
-  getAllLogs(): LogEntry[] {
-    return this.logs;
-  }
-
-  /**
-   * Limpa logs antigos
-   */
-  clearOldLogs(diasRetencao: number = 7) {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - diasRetencao);
-
-    this.logs = this.logs.filter(log => {
-      const logDate = new Date(log.timestamp);
-      return logDate > cutoffDate;
+  private notify(entry: LogEntry) {
+    this.listeners.forEach(listener => {
+      try {
+        listener(entry);
+      } catch (error) {
+        process.stderr.write(`Logger listener failed: ${String(error)}\n`);
+      }
     });
+  }
 
-    this.info(`Logs antigos limpos (retenção: ${diasRetencao} dias)`);
+  private async persist(entry: LogEntry) {
+    const entryDate = entry.timestamp.slice(0, 10);
+    if (entryDate !== this.currentDate) {
+      this.currentDate = entryDate;
+      await cleanupOldLogs(LOG_DIR);
+    }
+
+    const fileName = `${LOG_PREFIX}-${this.currentDate}.log`;
+    const filePath = path.join(LOG_DIR, fileName);
+    await appendFile(filePath, JSON.stringify(entry) + "\n");
+
+    const human = `[${entry.level.toUpperCase()}] ${entry.timestamp} ${entry.message}`;
+    process.stdout.write(`${human}${entry.details ? ` ${JSON.stringify(entry.details)}` : ""}\n`);
+  }
+
+  async getProcessLog(_logId: string) {
+    return null;
+  }
+
+  async saveToTXT(_logId: string): Promise<string> {
+    throw new Error("Legacy log export is no longer supported. Use /logs/stream for real-time logs.");
+  }
+
+  async saveToJSON(_logId: string): Promise<string> {
+    throw new Error("Legacy log export is no longer supported. Use /logs/stream for real-time logs.");
   }
 }
 
-// Singleton
 export const logger = new Logger();

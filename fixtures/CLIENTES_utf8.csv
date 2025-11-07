@@ -1,0 +1,3 @@
+CODIGO;NOME;CNPJ;CIDADE;ESTADO;TIPO
+C001;Cliente Um;12.345.678/0001-90;São Paulo;SP;Revendedor
+C002;Cliente Dois;;Rio de Janeiro;RJ;Consumidor Final

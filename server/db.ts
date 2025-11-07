@@ -153,7 +153,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 
   const db = await getDb({ role: "app" });
   if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
+    logger.warn("db:user-upsert-skipped", { reason: "database not available" });
     return;
   }
 
@@ -200,7 +200,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       set: updateSet,
     });
   } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
+    logger.error("db:user-upsert-failed", { error });
     throw error;
   }
 }
@@ -208,7 +208,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 export async function getUserByOpenId(openId: string) {
   const db = await getDb({ role: "app" });
   if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
+    logger.warn("db:user-get-skipped", { reason: "database not available" });
     return undefined;
   }
 

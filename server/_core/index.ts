@@ -10,6 +10,8 @@ import { serveStatic, setupVite } from "./vite";
 import uploadRouter from "../upload-route";
 import { setupWebSocketUpload } from "../uploadWebSocket";
 import { logDatabaseConnection } from "../db";
+import { logger } from "../logger";
+import type { LogEntry } from "../logger";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -63,13 +65,37 @@ async function startServer() {
   const preferredPort = parseInt(process.env.PORT || "3000");
   const port = await findAvailablePort(preferredPort);
 
+  if (process.env.NODE_ENV === "development") {
+    app.get("/logs/stream", (req, res) => {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      const flush = (res as unknown as { flushHeaders?: () => void }).flushHeaders;
+      flush?.();
+
+      const send = (entry: LogEntry) => {
+        res.write(`data: ${JSON.stringify(entry)}\n\n`);
+      };
+
+      const unsubscribe = logger.subscribe(send);
+
+      req.on("close", () => {
+        unsubscribe();
+        res.end();
+      });
+    });
+  }
+
   if (port !== preferredPort) {
-    console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
+    logger.warn("server:port-adjusted", { preferredPort, port });
   }
 
   server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+    logger.info("server:listening", { port });
   });
 }
 
-startServer().catch(console.error);
+startServer().catch(error => {
+  logger.error("server:start_failed", { error });
+  process.exitCode = 1;
+});
