@@ -91,6 +91,9 @@ export const movimentacoes = mysqlTable("movimentacoes", {
   numeroNota: varchar("numeroNota", { length: 50 }),
   tipoSaida: varchar("tipoSaida", { length: 50 }),
   descricaoSaida: text("descricaoSaida"),
+  tabelaPrecos: varchar("tabelaPrecos", { length: 100 }),
+  vendaComQRCode: boolean("vendaComQRCode"),
+  fingerprint: varchar("fingerprint", { length: 64 }).notNull().unique(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -106,6 +109,7 @@ export const estoque = mysqlTable("estoque", {
   codigoProduto: varchar("codigoProduto", { length: 50 }).notNull(),
   quantidade: int("quantidade").notNull(),
   dataEstoque: date("dataEstoque").notNull(),
+  fingerprint: varchar("fingerprint", { length: 64 }).notNull().unique(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
