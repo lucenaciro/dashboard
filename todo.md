@@ -89,3 +89,11 @@
 - [x] Implementar verificação inteligente de dragLeave
 - [x] Adicionar logs detalhados para debug
 - [ ] Testar em todos os navegadores
+
+## 🎨 Melhorias UX Upload
+- [x] Desabilitar completamente alerta de bloqueadores
+- [x] Adicionar barra de progresso visual (0-100%)
+- [x] Mostrar preview/ícone dos arquivos selecionados
+- [x] Permitir até 8 arquivos simultâneos
+- [x] Adicionar ícones de tipo de arquivo (CSV, XLSX)
+- [x] Mostrar tamanho dos arquivos em KB

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Upload as UploadIcon, ArrowLeft, Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { detectarBloqueadores, healthCheckUpload, exibirAlertaBloqueadores } from '@/lib/detectarBloqueadores';
+// Detecção de bloqueadores removida conforme solicitado
 import { trpc } from '@/lib/trpc';
 
 export default function Upload() {
@@ -12,37 +12,22 @@ export default function Upload() {
   const [files, setFiles] = useState<FileList | null>(null);
   const [processando, setProcessando] = useState(false);
   const [message, setMessage] = useState('');
-  const [ambienteChecked, setAmbienteChecked] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [showFallbackOption, setShowFallbackOption] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Solução 8: Análise de Ambiente ao montar componente
-  useEffect(() => {
-    const checkAmbiente = async () => {
-      const ambiente = detectarBloqueadores();
-      
-      if (ambiente.temBloqueadores) {
-        exibirAlertaBloqueadores(ambiente);
-        toast.warning('Bloqueadores detectados. Recomendamos usar a página /importar');
-      }
-      
-      const health = await healthCheckUpload();
-      if (!health.ok) {
-        toast.error(health.mensagem);
-      }
-      
-      setAmbienteChecked(true);
-    };
-    
-    checkAmbiente();
-  }, []);
+  // Detecção de bloqueadores removida - usuário solicitou desabilitar
 
-  // Limpar timeout ao desmontar
+  // Limpar timeout e interval ao desmontar
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
+      }
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
       }
     };
   }, []);
@@ -77,12 +62,16 @@ export default function Upload() {
   // Solução 6: Código com mutation.mutate conforme documento
   const importMutation = trpc.dados.importar.useMutation({
     onSuccess: () => {
-      // Limpar timeout
+      // Limpar timeout e interval
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
-      
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      setUploadProgress(100);
       console.log('[UPLOAD] Sucesso! Dados importados');
       setProcessando(false);
       toast.success('Dados importados com sucesso!');
@@ -120,6 +109,7 @@ export default function Upload() {
       
       // Ler conteúdo dos arquivos em paralelo (Promise.all)
       setMessage("Lendo arquivos...");
+      setUploadProgress(10);
       
       const filePromises = Array.from(files).map(async (file, i) => {
         console.log(`[UPLOAD] Lendo arquivo ${i + 1}/${files.length}:`, file.name);
@@ -141,6 +131,7 @@ export default function Upload() {
 
       // Checkpoint 2: Arquivos lidos
       console.log('[UPLOAD] Todos os arquivos lidos com sucesso');
+      setUploadProgress(30);
       
       // Solução 5: Salvar conteúdo temporário no localStorage para reuso
       localStorage.setItem('upload_backup', JSON.stringify(fileContents));
@@ -148,6 +139,7 @@ export default function Upload() {
 
       // Checkpoint 3: Tentando enviar ao servidor
       setMessage("Enviando ao servidor...");
+      setUploadProgress(50);
       console.log('[UPLOAD] Enviando dados ao servidor...');
       
       // Mapear arquivos para formato esperado pelo endpoint
@@ -163,10 +155,19 @@ export default function Upload() {
       timeoutRef.current = setTimeout(() => {
         console.warn('[UPLOAD] ⏱️ TIMEOUT! Resposta não recebida em 60s');
         setProcessando(false);
+        setUploadProgress(0);
         toast.error('Timeout: servidor não respondeu em 60s. Tente usar /importar');
         setShowFallbackOption(true);
         setMessage('❌ Timeout: servidor não respondeu. Use /importar');
       }, 60000); // 60 segundos
+
+      // Simular progresso durante processamento
+      progressIntervalRef.current = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) return prev;
+          return prev + 5;
+        });
+      }, 1000);
 
       console.log('[UPLOAD] Timeout de segurança configurado (60s)');
 
@@ -176,12 +177,16 @@ export default function Upload() {
     } catch (error: any) {
       console.error('[UPLOAD] Erro capturado:', error);
       
-      // Limpar timeout se houver
+      // Limpar timeout e interval se houver
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
-      
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      setUploadProgress(0);
       handleMutationError(error);
       setProcessando(false);
     }
@@ -338,21 +343,52 @@ export default function Upload() {
                   Clique para selecionar arquivos
                 </span>
                 <span className="text-sm text-gray-500">
-                  ou arraste e solte aqui
+                  ou arraste e solte aqui (até 8 arquivos)
                 </span>
               </label>
             </div>
 
+            {/* Preview dos arquivos selecionados */}
             {files && files.length > 0 && (
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-semibold mb-2">Arquivos selecionados:</h3>
-                <ul className="space-y-1">
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <h3 className="font-semibold text-gray-900 mb-3">
+                  Arquivos Selecionados ({files.length})
+                </h3>
+                <div className="space-y-2">
                   {Array.from(files).map((file, index) => (
-                    <li key={index} className="text-sm text-gray-600">
-                      • {file.name} ({(file.size / 1024).toFixed(2)} KB)
-                    </li>
+                    <div key={index} className="flex items-center gap-3 p-2 bg-gray-50 rounded">
+                      <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded flex items-center justify-center">
+                        <span className="text-blue-600 font-semibold text-xs">
+                          {file.name.split('.').pop()?.toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {file.name}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {(file.size / 1024).toFixed(2)} KB
+                        </p>
+                      </div>
+                    </div>
                   ))}
-                </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Barra de progresso */}
+            {processando && uploadProgress > 0 && (
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">Processando...</span>
+                  <span className="text-sm font-medium text-blue-600">{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
               </div>
             )}
 
