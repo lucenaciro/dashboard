@@ -14,6 +14,7 @@ export default function Upload() {
   const [message, setMessage] = useState('');
   const [ambienteChecked, setAmbienteChecked] = useState(false);
   const [showFallbackOption, setShowFallbackOption] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Solução 8: Análise de Ambiente ao montar componente
@@ -191,6 +192,77 @@ export default function Upload() {
     setLocation('/importar');
   };
 
+  // Handlers para drag & drop (compatível com todos os navegadores)
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Necessário para IE/Edge
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Necessário para Chrome/Safari/Firefox
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+    
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Verificar se realmente saiu da área (não apenas de um filho)
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    if (
+      e.clientX <= rect.left ||
+      e.clientX >= rect.right ||
+      e.clientY <= rect.top ||
+      e.clientY >= rect.bottom
+    ) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    // Compatibilidade cross-browser para acessar arquivos
+    let droppedFiles: FileList | null = null;
+    
+    if (e.dataTransfer) {
+      droppedFiles = e.dataTransfer.files;
+    }
+    
+    // Fallback para navegadores antigos
+    if (!droppedFiles && (e as any).originalEvent?.dataTransfer) {
+      droppedFiles = (e as any).originalEvent.dataTransfer.files;
+    }
+
+    if (droppedFiles && droppedFiles.length > 0) {
+      setFiles(droppedFiles);
+      setMessage('');
+      setShowFallbackOption(false);
+      console.log('[UPLOAD] Arquivos arrastados:', droppedFiles.length);
+      
+      // Listar arquivos no console para debug
+      Array.from(droppedFiles).forEach((file, i) => {
+        console.log(`  ${i + 1}. ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+      });
+    } else {
+      console.warn('[UPLOAD] Nenhum arquivo detectado no drop');
+      setMessage('❌ Nenhum arquivo detectado. Tente clicar para selecionar.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">
       <div className="max-w-4xl mx-auto">
@@ -237,7 +309,17 @@ export default function Upload() {
           )}
 
           <div className="space-y-6">
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
+            <div 
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition-all ${
+                isDragging 
+                  ? 'border-blue-500 bg-blue-50 scale-105' 
+                  : 'border-gray-300 hover:border-blue-400'
+              }`}
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
               <input
                 type="file"
                 multiple
@@ -307,10 +389,28 @@ export default function Upload() {
             <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
               <li>Prepare seus arquivos CSV ou Excel com os dados atualizados</li>
               <li>Certifique-se de que os arquivos seguem o formato esperado</li>
-              <li>Clique em "Escolher Arquivos" e selecione todos os arquivos de uma vez</li>
+              <li><strong>Clique na área tracejada acima</strong> para selecionar arquivos (recomendado)</li>
+              <li>Ou arraste e solte os arquivos diretamente na área tracejada</li>
               <li>Aguarde o processamento (isso pode levar alguns minutos)</li>
               <li>Você será automaticamente redirecionado para o dashboard</li>
             </ol>
+          </div>
+
+          <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <h4 className="font-semibold text-amber-900 mb-1">Dica para Todos os Navegadores</h4>
+                <p className="text-sm text-amber-800">
+                  <strong>Método recomendado:</strong> Clique na área tracejada acima para selecionar arquivos.
+                  <br />
+                  <strong>Drag & Drop:</strong> Se ao arrastar arquivos o navegador mostrar um diálogo, 
+                  clique em <strong>Cancelar</strong> e use o método de clicar.
+                  <br />
+                  <strong>Alternativa:</strong> Use a página de <strong>Copiar/Colar</strong> (/importar) se tiver problemas.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="mt-4 text-center">

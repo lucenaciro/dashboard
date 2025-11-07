@@ -75,3 +75,17 @@
 - [ ] Backend processa dados MAS NÃO retorna resposta
 - [ ] Adicionar return no final da mutation dados.importar
 - [ ] Testar que frontend recebe resposta e redireciona
+
+## 🔧 Correção Drag & Drop Firefox
+- [x] Implementar preventDefault em eventos drag (dragover, dragleave, drop)
+- [x] Adicionar feedback visual durante drag (borda destacada)
+- [x] Adicionar instruções claras sobre como usar
+- [ ] Testar drag & drop no Firefox
+
+## 🌐 Compatibilidade Cross-Browser (Drag & Drop)
+- [x] Adicionar suporte para Chrome/Edge/Brave (dropEffect, dragEnter)
+- [x] Adicionar suporte para Safari (preventDefault em dragOver)
+- [x] Adicionar suporte para Internet Explorer (fallback originalEvent)
+- [x] Implementar verificação inteligente de dragLeave
+- [x] Adicionar logs detalhados para debug
+- [ ] Testar em todos os navegadores
