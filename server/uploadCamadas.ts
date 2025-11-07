@@ -1,6 +1,6 @@
 import { storagePut } from './storage';
 import { getDb } from './db';
-import { sql } from 'drizzle-orm';
+import { logger } from './logger';
 
 interface UploadJob {
   id: string;
@@ -40,7 +40,7 @@ export async function criarJobUpload(files: { name: string; content: string }[])
   
   // Upload dos arquivos para S3 em background
   processarUploadEmCamadas(jobId, files).catch(error => {
-    console.error(`[UPLOAD_CAMADAS] Erro no job ${jobId}:`, error);
+    logger.error(`[UPLOAD_CAMADAS] Erro no job ${jobId}`, { error });
     const job = uploadJobs.get(jobId);
     if (job) {
       job.status = 'failed';
@@ -61,7 +61,7 @@ async function processarUploadEmCamadas(jobId: string, files: { name: string; co
   
   try {
     // Passo 1: Upload para S3
-    console.log(`[UPLOAD_CAMADAS] Job ${jobId}: Enviando ${files.length} arquivos para S3`);
+    logger.info(`[UPLOAD_CAMADAS] Job ${jobId}: Enviando arquivos para armazenamento`, { totalArquivos: files.length });
     
     const s3Keys: string[] = [];
     
@@ -69,11 +69,11 @@ async function processarUploadEmCamadas(jobId: string, files: { name: string; co
       const key = `uploads/${jobId}/${file.name}`;
       const { url } = await storagePut(key, file.content, 'text/csv');
       s3Keys.push(key);
-      console.log(`[UPLOAD_CAMADAS] Arquivo ${file.name} enviado para S3:`, url);
+      logger.info(`[UPLOAD_CAMADAS] Arquivo enviado`, { jobId, arquivo: file.name, destino: url });
     }
     
     // Passo 2: Processar arquivos do S3
-    console.log(`[UPLOAD_CAMADAS] Job ${jobId}: Processando arquivos do S3`);
+    logger.info(`[UPLOAD_CAMADAS] Job ${jobId}: Processando arquivos do armazenamento`);
     
     const db = await getDb();
     if (!db) throw new Error('Database not available');
@@ -84,7 +84,7 @@ async function processarUploadEmCamadas(jobId: string, files: { name: string; co
       try {
         // Aqui você processaria o conteúdo do arquivo
         // Por enquanto, apenas simulando
-        console.log(`[UPLOAD_CAMADAS] Processando ${file.name}...`);
+        logger.info(`[UPLOAD_CAMADAS] Processando arquivo`, { jobId, arquivo: file.name });
         
         // Simular processamento
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -100,14 +100,14 @@ async function processarUploadEmCamadas(jobId: string, files: { name: string; co
     job.status = 'completed';
     job.updatedAt = new Date();
     
-    console.log(`[UPLOAD_CAMADAS] Job ${jobId} concluído com sucesso`);
+    logger.info(`[UPLOAD_CAMADAS] Job ${jobId} concluído com sucesso`);
     
   } catch (error: any) {
     job.status = 'failed';
     job.errors.push(error.message);
     job.updatedAt = new Date();
     
-    console.error(`[UPLOAD_CAMADAS] Job ${jobId} falhou:`, error);
+    logger.error(`[UPLOAD_CAMADAS] Job ${jobId} falhou`, { error });
   }
 }
 
@@ -127,7 +127,7 @@ export function limparJobsAntigos() {
   
   jobsParaRemover.forEach(jobId => {
     uploadJobs.delete(jobId);
-    console.log(`[UPLOAD_CAMADAS] Job ${jobId} removido (mais de 24h)`);
+    logger.info(`[UPLOAD_CAMADAS] Job ${jobId} removido por expiração`);
   });
 }
 

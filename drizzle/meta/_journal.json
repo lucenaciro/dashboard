@@ -36,6 +36,13 @@
       "when": 1762463547235,
       "tag": "0004_silly_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1762497600000,
+      "tag": "0005_e2e_csv_import",
+      "breakpoints": true
     }
   ]
 }
