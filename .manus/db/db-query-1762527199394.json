@@ -1,0 +1,17 @@
+{
+  "query": "SELECT \n  (SELECT COUNT(*) FROM clientes) as total_clientes,\n  (SELECT COUNT(*) FROM vendedores) as total_vendedores,\n  (SELECT COUNT(*) FROM produtos) as total_produtos,\n  (SELECT COUNT(*) FROM movimentacoes) as total_movimentacoes,\n  (SELECT COUNT(*) FROM estoque) as total_estoque;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user QYG13TLSFo5Ekya.918014ccc1bb --database FrE4fUPnqeti7iCmvyJ7mz --execute SELECT \n  (SELECT COUNT(*) FROM clientes) as total_clientes,\n  (SELECT COUNT(*) FROM vendedores) as total_vendedores,\n  (SELECT COUNT(*) FROM produtos) as total_produtos,\n  (SELECT COUNT(*) FROM movimentacoes) as total_movimentacoes,\n  (SELECT COUNT(*) FROM estoque) as total_estoque;",
+  "rows": [
+    {
+      "total_clientes": "0",
+      "total_vendedores": "0",
+      "total_produtos": "0",
+      "total_movimentacoes": "0",
+      "total_estoque": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "total_clientes\ttotal_vendedores\ttotal_produtos\ttotal_movimentacoes\ttotal_estoque\n0\t0\t0\t0\t0\n",
+  "stderr": "",
+  "execution_time_ms": 404
+}

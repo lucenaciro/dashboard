@@ -8,9 +8,7 @@ import * as db from "./db";
 import { getDb } from "./db";
 import { clientes, vendedores, produtos, movimentacoes, estoque } from "../drizzle/schema";
 import { processarUpload } from "./process-upload";
-import { validarDados, validarIntegridadeAvancada, criarCadastrosFaltantes, schemas } from "./validators";
 import { logger } from "./logger";
-import { processarArquivoInteligente } from "./polarsProcessor";
 import { criarJobUpload, consultarJobUpload } from "./uploadCamadas";
 
 export const appRouter = router({
@@ -66,313 +64,44 @@ export const appRouter = router({
     importar: publicProcedure
       .input(
         z.object({
-          clientes: z.string(),
-          vendedores: z.string(),
-          produtos: z.string(),
-          movimentacoes: z.string(),
-          estoque: z.string(),
+          clientes: z.string().optional(),
+          vendedores: z.string().optional(),
+          produtos: z.string().optional(),
+          movimentacoes: z.string().optional(),
+          estoque: z.string().optional(),
+          dryRun: z.boolean().optional(),
         })
       )
       .mutation(async ({ input }) => {
-        console.log("[BACKEND] Iniciando mutation de importacao");
-        const db = await getDb();
-        console.log("[BACKEND] Banco conectado");
-        if (!db) throw new Error('Database not available');
-        
-        console.log("[BACKEND] Dados recebidos:", Object.keys(input));
+        const arquivos: { nome: string; base64: string }[] = [];
 
-        try {
-          let totalProcessado = 0;
-          let totalErros = 0;
-          const logId = logger.startProcessing(1, 'importacao_completa');
-
-        // Processar clientes
-        if (input.clientes) {
-          // Verificar se deve usar Polars
-          const processamento = await processarArquivoInteligente(input.clientes, 'clientes');
-          if (processamento.metodo === 'polars') {
-            logger.info('Arquivo processado com Polars', processamento.resultado);
-          }
-          const linhas = input.clientes.split('\n').filter(l => l.trim());
-          const headers = linhas[0].split(';');
-          
-          // Parsear dados
-          const dadosClientes = linhas.slice(1).map(linha => {
-            const valores = linha.split(';');
-            const row: Record<string, string> = {};
-            headers.forEach((h, idx) => {
-              row[h.trim()] = valores[idx]?.trim() || '';
-            });
-            return row;
+        const appendIfPresent = (conteudo: string | undefined, nome: string) => {
+          if (!conteudo) return;
+          const trimmed = conteudo.trim();
+          if (trimmed.length === 0) return;
+          arquivos.push({
+            nome,
+            base64: Buffer.from(trimmed, 'utf8').toString('base64'),
           });
+        };
 
-          // VALIDAR DADOS
-          const validacao = validarDados(dadosClientes, 'clientes');
-          logger.info(`Validação clientes: ${validacao.linhasValidas} válidas, ${validacao.linhasInvalidas} inválidas`);
-          
-          validacao.erros.forEach(erro => {
-            logger.logInvalidField(logId, erro.linha, erro.campo, erro.valor, erro.erro);
-          });
+        appendIfPresent(input.clientes, 'clientes.csv');
+        appendIfPresent(input.vendedores, 'vendedores.csv');
+        appendIfPresent(input.produtos, 'produtos.csv');
+        appendIfPresent(input.movimentacoes, 'movimentacoes.csv');
+        appendIfPresent(input.estoque, 'estoque.csv');
 
-          // Inserir apenas dados válidos
-          for (let i = 0; i < dadosClientes.length; i++) {
-            const row = dadosClientes[i];
-            
-            // Pular linhas inválidas
-            if (validacao.erros.some(e => e.linha === i + 1)) {
-              totalErros++;
-              continue;
-            }
-
-            try {
-              await db.insert(clientes).values({
-                codigoCliente: row['Código do Cliente'] || row['CODIGO'] || '',
-                nome: row['Nome'] || row['NOME'] || '',
-                cnpj: row['CNPJ'] || null,
-                municipio: row['Município'] || row['CIDADE'] || null,
-                estado: row['Estado'] || row['ESTADO'] || null,
-                tipoCliente: (row['TIPO'] || 'revendedor') as 'loja_propria' | 'revendedor' | 'consumidor_final',
-              }).onDuplicateKeyUpdate({ set: { codigoCliente: row['Código do Cliente'] || row['CODIGO'] } });
-              totalProcessado++;
-            } catch (e) {
-              logger.error('Erro ao inserir cliente', { linha: i + 1, erro: e });
-              totalErros++;
-            }
-          }
+        if (arquivos.length === 0) {
+          throw new Error('Nenhum conteúdo CSV fornecido');
         }
 
-        // Processar vendedores
-        if (input.vendedores) {
-          const linhas = input.vendedores.split('\n').filter(l => l.trim());
-          const headers = linhas[0].split(';');
-          
-          for (let i = 1; i < linhas.length; i++) {
-            const valores = linhas[i].split(';');
-            const row: Record<string, string> = {};
-            headers.forEach((h, idx) => {
-              row[h.trim()] = valores[idx]?.trim() || '';
-            });
+        const resultado = await processarUpload(arquivos);
 
-            try {
-              await db.insert(vendedores).values({
-                codigoVendedor: row['Código Vendedor'] || row['CODIGO'] || '',
-                nome: row['Nome'] || row['NOME'] || '',
-              }).onDuplicateKeyUpdate({ set: { codigoVendedor: row['Código Vendedor'] || row['CODIGO'] } });
-              totalProcessado++;
-            } catch (e) {
-              console.error('Erro ao inserir vendedor:', e);
-            }
-          }
-        }
-
-        // Processar produtos
-        if (input.produtos) {
-          const linhas = input.produtos.split('\n').filter(l => l.trim());
-          const headers = linhas[0].split(';');
-          
-          for (let i = 1; i < linhas.length; i++) {
-            const valores = linhas[i].split(';');
-            const row: Record<string, string> = {};
-            headers.forEach((h, idx) => {
-              row[h.trim()] = valores[idx]?.trim() || '';
-            });
-
-            try {
-              await db.insert(produtos).values({
-                codigoProduto: row['Código Produto'] || row['CODIGO'] || '',
-                descricao: row['Descrição'] || row['DESCRICAO'] || '',
-              }).onDuplicateKeyUpdate({ set: { codigoProduto: row['Código Produto'] || row['CODIGO'] } });
-              totalProcessado++;
-            } catch (e) {
-              console.error('Erro ao inserir produto:', e);
-            }
-          }
-        }
-
-        // Processar movimentações
-        if (input.movimentacoes) {
-          // VALIDAÇÃO DE INTEGRIDADE REFERENCIAL
-          const dadosParsed = {
-            clientes: input.clientes ? input.clientes.split('\n').slice(1).filter(l => l.trim()).map(l => {
-              const vals = l.split(';');
-              return { 
-                CODIGO: vals[0]?.trim(),
-                NOME: vals[1]?.trim(),
-                TIPO: vals[4]?.trim() || 'consumidor_final'
-              };
-            }).filter(c => c.CODIGO) : [],
-            vendedores: input.vendedores ? input.vendedores.split('\n').slice(1).filter(l => l.trim()).map(l => {
-              const vals = l.split(';');
-              return { 
-                CODIGO: vals[0]?.trim(),
-                NOME: vals[1]?.trim()
-              };
-            }).filter(v => v.CODIGO) : [],
-            produtos: input.produtos ? input.produtos.split('\n').slice(1).filter(l => l.trim()).map(l => {
-              const vals = l.split(';');
-              return { 
-                CODIGO: vals[0]?.trim(), 
-                DESCRICAO: vals[1]?.trim() 
-              };
-            }).filter(p => p.CODIGO) : [],
-            movimentacoes: input.movimentacoes.split('\n').slice(1).map(l => {
-              const vals = l.split(';');
-              return {
-                CODIGO_CLIENTE: vals[0],
-                CODIGO_VENDEDOR: vals[1],
-                CODIGO_PRODUTO: vals[2],
-              };
-            }),
-          };
-
-          const integridadeResult = validarIntegridadeAvancada(dadosParsed);
-          logger.info(`Validação de integridade: ${integridadeResult.estatisticas.movimentacoesValidas} válidas, ${integridadeResult.estatisticas.movimentacoesInvalidas} inválidas`);
-          
-          if (!integridadeResult.valido) {
-            logger.warn(`Encontrados ${integridadeResult.erros.length} erros de integridade. Sugestão: ${integridadeResult.sugestaoCorrecao}`);
-            
-            // Se sugestão for criar cadastros, criar automaticamente
-            if (integridadeResult.sugestaoCorrecao === 'criar_cadastro') {
-              const cadastrosFaltantes = criarCadastrosFaltantes(dadosParsed);
-              logger.info(`Criando ${cadastrosFaltantes.novosClientes.length} clientes, ${cadastrosFaltantes.novosVendedores.length} vendedores, ${cadastrosFaltantes.novosProdutos.length} produtos faltantes`);
-              
-              // Inserir cadastros faltantes
-              const database = await getDb();
-              if (database) {
-                for (const c of cadastrosFaltantes.novosClientes) {
-                  await database.insert(clientes).values({
-                    codigoCliente: c.CODIGO,
-                    nome: c.NOME,
-                    tipoCliente: c.TIPO || 'consumidor_final',
-                  }).onDuplicateKeyUpdate({ set: { codigoCliente: c.CODIGO } });
-                }
-                
-                for (const v of cadastrosFaltantes.novosVendedores) {
-                  await database.insert(vendedores).values({
-                    codigoVendedor: v.CODIGO,
-                    nome: v.NOME,
-                  }).onDuplicateKeyUpdate({ set: { codigoVendedor: v.CODIGO } });
-                }
-                
-                for (const p of cadastrosFaltantes.novosProdutos) {
-                  // Verificar se tem valores antes de inserir
-                  if (p.CODIGO && p.DESCRICAO) {
-                    try {
-                      await database.insert(produtos).values({
-                        codigoProduto: p.CODIGO,
-                        descricao: p.DESCRICAO,
-                      }).onDuplicateKeyUpdate({ set: { codigoProduto: p.CODIGO } });
-                      logger.info(`Produto criado: ${p.CODIGO}`);
-                    } catch (error) {
-                      logger.error(`Erro ao inserir produto ${p.CODIGO}:`, error);
-                    }
-                  } else {
-                    logger.warn(`Produto inválido (sem código ou descrição):`, p);
-                  }
-                }
-              }
-            }
-          }
-          const linhas = input.movimentacoes.split('\n').filter(l => l.trim());
-          const headers = linhas[0].split(';');
-          
-          for (let i = 1; i < linhas.length; i++) {
-            const valores = linhas[i].split(';');
-            const row: Record<string, string> = {};
-            headers.forEach((h, idx) => {
-              row[h.trim()] = valores[idx]?.trim() || '';
-            });
-
-            try {
-              const parseData = (dataStr: string): Date | null => {
-                if (!dataStr) return null;
-                const partes = dataStr.split('/');
-                if (partes.length === 3) {
-                  return new Date(`${partes[2]}-${partes[1]}-${partes[0]}`);
-                }
-                return new Date(dataStr);
-              };
-
-              const parseValor = (valorStr: string): number => {
-                const valor = parseFloat(valorStr.replace(',', '.'));
-                return Math.round(valor * 100); // Converter para centavos
-              };
-
-              await db.insert(movimentacoes).values({
-                codigoCliente: row['Código Cliente'] || row['CODIGO_CLIENTE'] || '',
-                codigoVendedor: row['Código Vendedor'] || row['CODIGO_VENDEDOR'] || '',
-                codigoProduto: row['Código Produto'] || row['CODIGO_PRODUTO'] || '',
-                data: parseData(row['Data'] || row['DATA_PEDIDO'] || row['DATA']) || new Date(),
-                quantidade: parseInt(row['Quantidade'] || row['QUANTIDADE'] || '0'),
-                valorTotal: parseValor(row['Valor Total'] || row['VALOR_TOTAL'] || '0'),
-              });
-              totalProcessado++;
-            } catch (e) {
-              console.error('Erro ao inserir movimentação:', e);
-            }
-          }
-        }
-
-        // Processar estoque
-        if (input.estoque) {
-          const linhas = input.estoque.split('\n').filter(l => l.trim());
-          const headers = linhas[0].split(';');
-          
-          for (let i = 1; i < linhas.length; i++) {
-            const valores = linhas[i].split(';');
-            const row: Record<string, string> = {};
-            headers.forEach((h, idx) => {
-              row[h.trim()] = valores[idx]?.trim() || '';
-            });
-
-            try {
-              const parseData = (dataStr: string): Date | null => {
-                if (!dataStr) return new Date();
-                const partes = dataStr.split('/');
-                if (partes.length === 3) {
-                  return new Date(`${partes[2]}-${partes[1]}-${partes[0]}`);
-                }
-                return new Date(dataStr);
-              };
-
-              await db.insert(estoque).values({
-                codigoProduto: row['Código Produto'] || row['CODIGO_PRODUTO'] || '',
-                quantidade: parseInt(row['Quantidade'] || row['QUANTIDADE'] || '0'),
-                dataEstoque: parseData(row['Data'] || row['DATA_ESTOQUE'] || row['DATA']) || new Date(),
-                distribuidor: row['Distribuidor'] || row['DISTRIBUIDOR'] || null,
-              });
-              totalProcessado++;
-            } catch (e) {
-              console.error('Erro ao inserir estoque:', e);
-            }
-          }
-        }
-
-          // Finalizar logging
-          logger.endProcessing(logId, true);
-          const processLog = logger.getProcessLog(logId);
-
-          console.log("[BACKEND] Finalizado com sucesso");
-          return { 
-            totalProcessado, 
-            totalErros,
-            totalInserido: totalProcessado,
-            sucesso: true,
-            log: processLog
-          };
-        } catch (e: any) {
-          console.error("[BACKEND] Erro capturado:", e);
-          throw new Error(e.message);
-        }
-      }),
-  }),
-  upload: router({
-    processar: publicProcedure
-      .input(z.object({
-        arquivos: z.array(z.object({ nome: z.string(), base64: z.string() })),
-      }))
-      .mutation(async ({ input }) => {
-        return await processarUpload(input.arquivos);
+        return {
+          sucesso: resultado.success,
+          totalProcessado: resultado.totalProcessado,
+          mensagem: `Importação concluída com sucesso! ${resultado.totalProcessado} registros processados.`,
+        };
       }),
   }),
   system: systemRouter,

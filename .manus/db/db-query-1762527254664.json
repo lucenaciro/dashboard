@@ -1,0 +1,9 @@
+{
+  "query": "INSERT INTO clientes (codigoCliente, nome, cnpj, municipio, estado) VALUES ('TEST001', 'Cliente Teste', '12.345.678/0001-90', 'São Luís', 'MA');\nINSERT INTO vendedores (codigoVendedor, nome) VALUES ('VEND001', 'Vendedor Teste');\nINSERT INTO produtos (codigoProduto, descricao) VALUES ('PROD001', 'Produto Teste');\nINSERT INTO movimentacoes (codigoCliente, codigoVendedor, codigoProduto, data, quantidade, valorTotal) VALUES ('TEST001', 'VEND001', 'PROD001', '2025-01-02', 5, 360000);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user QYG13TLSFo5Ekya.918014ccc1bb --database FrE4fUPnqeti7iCmvyJ7mz --execute INSERT INTO clientes (codigoCliente, nome, cnpj, municipio, estado) VALUES ('TEST001', 'Cliente Teste', '12.345.678/0001-90', 'São Luís', 'MA');\nINSERT INTO vendedores (codigoVendedor, nome) VALUES ('VEND001', 'Vendedor Teste');\nINSERT INTO produtos (codigoProduto, descricao) VALUES ('PROD001', 'Produto Teste');\nINSERT INTO movimentacoes (codigoCliente, codigoVendedor, codigoProduto, data, quantidade, valorTotal) VALUES ('TEST001', 'VEND001', 'PROD001', '2025-01-02', 5, 360000);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 657
+}
