@@ -75,12 +75,12 @@ describe("CSV importer integration", () => {
   beforeEach(() => {
     db = new FakeDatabase();
 
-    const clientesCsv = "\ufeffMunicípio;Código;Nome;Tipo Cliente\nSão Paulo;C001;Loja Árvore;Revendedor\n";
+    const clientesCsv = "\ufeffMunicípio;Estado;Código;Nome;Tipo Cliente\nSão Paulo;SP;C001;Loja Árvore;Revendedor\n";
     const produtosCsv = "Código;Descrição\nP001;Bateria 60Ah\n";
     const movimentacoesCsv = [
-      "Município;Código Cliente;Código Produto;Quantidade;Valor Total;Data;Número Nota;Venda com QR Code",
-      "São Paulo;C001;P001;1.234,00;1.234,56;05/11/2024;NF123;Sim",
-      ";;;;;;",
+      "Código Vendedor;Código Cliente;Código Produto;Quantidade;Valor Total;Data;Número Nota;Venda com QR Code",
+      "V001;C001;P001;1.234,00;1.234,56;05/11/2024;NF123;Sim",
+      ";;;;;;;",
     ].join("\n");
     const estoqueCsv = "Código Produto;Quantidade;Data\nP001;10;05-11-2024\n";
 

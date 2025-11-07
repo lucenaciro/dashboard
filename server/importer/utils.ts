@@ -1,37 +1,11 @@
 import { createHash } from "node:crypto";
-import { HEADER_ALIAS_MAP, BOOLEAN_TRUE_VALUES, BOOLEAN_FALSE_VALUES } from "./constants";
+import { BOOLEAN_TRUE_VALUES, BOOLEAN_FALSE_VALUES } from "./constants";
 import { ImportFileType, NormalizedRow } from "./types";
-
-const NON_WORD_PATTERN = /[^a-z0-9]+/g;
 
 export const DATE_PATTERNS = [
   /^(\d{2})\/(\d{2})\/(\d{4})$/,
   /^(\d{2})-(\d{2})-(\d{4})$/,
 ];
-
-export function normalizeHeader(rawHeader: string): string {
-  const noBom = rawHeader.replace(/^\uFEFF/, "");
-  const normalized = noBom
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(NON_WORD_PATTERN, "_")
-    .replace(/^_+|_+$/g, "");
-  return normalized;
-}
-
-export function mapHeader(type: ImportFileType, rawHeader: string): string {
-  const normalized = normalizeHeader(rawHeader);
-  const aliasMap = HEADER_ALIAS_MAP[type];
-
-  for (const [target, aliases] of Object.entries(aliasMap)) {
-    if (target === normalized || aliases.includes(normalized)) {
-      return target;
-    }
-  }
-
-  return normalized;
-}
 
 export function normalizeRowValues(row: Record<string, unknown>): NormalizedRow {
   const normalized: NormalizedRow = {};

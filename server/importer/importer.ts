@@ -11,6 +11,7 @@ import {
   NormalizedRow,
 } from "./types";
 import { createCsvParser } from "./parser";
+import { describeUnknownHeaders } from "./header-mapping";
 import { inferFileType, isBlankRow } from "./utils";
 import { validateRow } from "./row-validators";
 import { logger } from "../logger";
@@ -277,6 +278,28 @@ export async function importArquivos(db: Database, arquivos: UploadFile[], optio
       const buffer = Buffer.from(arquivo.base64, "base64");
       const parser = createCsvParser(buffer, type);
 
+      await parser.waitForHeaders();
+      const missingHeaders = parser.getMissingHeaders();
+      const unknownHeaders = parser.getUnknownHeaders();
+
+      if (unknownHeaders.length > 0) {
+        summary.warnings.push({
+          rowNumber: 1,
+          reason: `Cabeçalhos desconhecidos ignorados: ${describeUnknownHeaders(unknownHeaders)}`,
+        });
+      }
+
+      if (missingHeaders.length > 0) {
+        registerSkip(summary, SkipReason.MissingHeader);
+        summary.errors.push({
+          rowNumber: 0,
+          column: undefined,
+          reason: `Cabeçalhos obrigatórios ausentes: ${missingHeaders.join(", ")}`,
+          value: null,
+        });
+        continue;
+      }
+
       const processRow = async (row: NormalizedRow, tx?: Transaction) => {
         const rowNumber = row.__rowNumber ?? summary.totalRows + 2;
         const context: RowContext = { rowNumber, type, fileName: arquivo.nome };
@@ -322,15 +345,6 @@ export async function importArquivos(db: Database, arquivos: UploadFile[], optio
           for await (const row of parser.stream) {
             await processRow(row, tx);
           }
-        });
-      }
-
-      const missingHeaders = parser.getMissingHeaders();
-      if (missingHeaders.length > 0) {
-        registerSkip(summary, SkipReason.MissingHeader);
-        summary.warnings.push({
-          rowNumber: 1,
-          reason: `Cabeçalhos ausentes: ${missingHeaders.join(", ")}`,
         });
       }
     } catch (error) {

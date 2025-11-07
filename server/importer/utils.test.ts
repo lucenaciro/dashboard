@@ -1,19 +1,43 @@
 import { describe, it, expect } from "vitest";
-import {
-  normalizeHeader,
-  parseDecimalToCents,
-  parseDateFlexible,
-  parseInteger,
-  parseBoolean,
-} from "./utils";
+import { canon, buildHeaderMap } from "../../shared/headerAliases";
+import { resolveHeaders } from "./header-mapping";
+import { parseDecimalToCents, parseDateFlexible, parseInteger, parseBoolean } from "./utils";
 
-describe("CSV utility helpers", () => {
+describe("Header canonicalization", () => {
   it("normalizes headers removing accents and whitespace", () => {
-    expect(normalizeHeader(" Município ")).toBe("municipio");
-    expect(normalizeHeader("Código do Cliente")).toBe("codigo_do_cliente");
-    expect(normalizeHeader("Valor-Total")).toBe("valor_total");
+    expect(canon(" Município ")).toBe("municipio");
+    expect(canon("Código do Cliente")).toBe("codigo_do_cliente");
+    expect(canon("Valor-Total")).toBe("valor_total");
   });
 
+  it("maps aliases to canonical fields", () => {
+    const { indexToField } = buildHeaderMap([
+      "Código Produto",
+      "Quantidade",
+      "Valor Total",
+    ]);
+    expect(indexToField[0]).toBe("product_code");
+    expect(indexToField[1]).toBe("quantity");
+    expect(indexToField[2]).toBe("total_value");
+  });
+
+  it("identifies missing required headers for vendas", () => {
+    const resolution = resolveHeaders("movimentacoes", [
+      "Código Produto",
+      "Quantidade",
+      "Valor Total",
+    ]);
+
+    expect(resolution.missingCanonical).toEqual(
+      expect.arrayContaining(["date", "vendor_id", "client_id"])
+    );
+    expect(resolution.missingInternal).toEqual(
+      expect.arrayContaining(["data", "codigo_vendedor", "codigo_cliente"])
+    );
+  });
+});
+
+describe("CSV utility helpers", () => {
   it("parses pt-BR currency keeping cents precision", () => {
     expect(parseDecimalToCents("1.234,56", "valor")).toBe(123456);
     expect(parseDecimalToCents("R$ 987,00", "valor")).toBe(98700);

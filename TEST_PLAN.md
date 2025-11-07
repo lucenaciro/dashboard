@@ -4,7 +4,7 @@
 
 1. **Type safety** – `pnpm check`
 2. **Unit & integration coverage** – `pnpm test`
-   - `server/importer/utils.test.ts`: header normalization, pt-BR numbers, flexible dates, boolean normalization
+   - `server/importer/utils.test.ts`: canonical header mapping, alias resolution, pt-BR numbers, flexible dates, boolean normalization
    - `server/importer/row-validators.test.ts`: row-level validation errors & fingerprint generation
    - `server/importer/importer.integration.test.ts`: transactional importer against in-memory Drizzle double (insert, update, dry-run paths)
 
@@ -21,11 +21,12 @@ The fixtures below live in `server/importer/__fixtures__` and exercise accents, 
 ### Steps
 
 1. Start backend (`pnpm dev` or relevant supervisor) with a test database.
-2. Hit `POST /api/upload?dryRun=true` with the three fixtures to confirm validation passes without persisting.
+2. Run `pnpm tsx scripts/headers_probe.ts` to regenerate `HEADERS_REPORT.md` and verify required headers per file type.
+3. Hit `POST /api/upload?dryRun=true` with the three fixtures to confirm validation passes without persisting.
    - Expect response summary to report `dryRun: true`, populated `skipReasonCounts`, and zero inserts.
-3. Repeat without `dryRun` and ensure summary counters match the row totals (one insert per file, blank lines skipped with reason) and DB tables reflect normalized values (quantities, cents, parsed dates, booleans).
-4. Re-import the same payload and confirm `updated` counters increment while row counts remain stable (idempotent fingerprint upsert).
-5. Confirm dashboard queries (KPIs/top charts) reflect the imported totals instead of zeros.
+4. Repeat without `dryRun` and ensure summary counters match the row totals (one insert per file, blank lines skipped with reason) and DB tables reflect normalized values (quantities, cents, parsed dates, booleans).
+5. Re-import the same payload and confirm `updated` counters increment while row counts remain stable (idempotent fingerprint upsert).
+6. Confirm dashboard queries (KPIs/top charts) reflect the imported totals instead of zeros.
 
 ## 3. Observability
 

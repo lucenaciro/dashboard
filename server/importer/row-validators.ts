@@ -422,17 +422,3 @@ export function validateRow(row: NormalizedRow, ctx: RowContext): ParseResult<Va
   }
 }
 
-export function getRequiredHeaders(type: ImportFileType): string[] {
-  switch (type) {
-    case "clientes":
-      return ["codigo_cliente", "nome"];
-    case "vendedores":
-      return ["codigo_vendedor", "nome"];
-    case "produtos":
-      return ["codigo_produto", "descricao"];
-    case "movimentacoes":
-      return ["codigo_cliente", "codigo_produto", "quantidade", "valor_total", "data"];
-    case "estoque":
-      return ["codigo_produto", "quantidade", "data_estoque"];
-  }
-}
